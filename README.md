@@ -56,8 +56,11 @@
 ##### ***CONTACTS***
 
 Email: asinsideoutt@gmail.com
+
 Telegram: @miunlocktoolrevamp
+
 Reddit: u/AsInsideOut
+
 Website: SOON
 
 ##### ***SUPPORT THE PROJECT***
@@ -121,8 +124,11 @@ Website: SOON
 ##### ***КОНТАКТЫ***
 
 Email: asinsideoutt@gmail.com
+
 Telegram: @miunlocktoolrevamp
+
 Reddit: u/AsInsideOut
+
 Сайт: СКОРО
 
 ##### ***ПОДДЕРЖКА ПРОЕКТА***
