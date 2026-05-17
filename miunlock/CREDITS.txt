@@ -1,0 +1,16 @@
+Huge credits to offici5l for letting us use his version of Xiaomi Flash Unlock that is based on Python. 
+
+We did not change anything in his script and only converted it to EXE file.
+
+Check out MiFlash Unlock (MiUnlockTool) by offici5l here and give it a star: https://github.com/offici5l/MiUnlockTool
+
+Also don't forget to follow him here: https://github.com/offici5l/
+
+ .d88b.  d88888b d88888b d888888b  .o88b. d888888b   ooooo db     
+.8P  Y8. 88'     88'       `88'   d8P  Y8   `88'    8P~~~~ 88     
+88    88 88ooo   88ooo      88    8P         88    dP      88     
+88    88 88~~~   88~~~      88    8b         88    V8888b. 88     
+`8b  d8' 88      88        .88.   Y8b  d8   .88.       `8D 88booo.
+ `Y88P'  YP      YP      Y888888P  `Y88P' Y888888P 88oobY' Y88888P
+
+
