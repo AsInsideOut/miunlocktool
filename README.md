@@ -7,6 +7,12 @@
 
 ##### Xiaomi Unlock Tool is universal program for unlocking bootloader on your Xiaomi/Redmi/Poco phone that runs on HyperOS! All HyperOS versions work **EXCEPT** China (CNXM).
 
+##### \----------***Supported platforms***----------
+
+**Windows**
+
+**Linux/Gnome (45)**
+
 
 
 ##### \----------***How to install (PC/Windows)***----------
@@ -68,6 +74,12 @@ Website: SOON
 #### ***Русский***
 
 ##### Xiaomi Unlock Tool — это универсальная программа для разблокировки загрузчика на вашем телефоне Xiaomi/Redmi/Poco, работающем на HyperOS! Поддерживаются все версии HyperOS, КРОМЕ Китая (CNXM).
+
+##### \----------***Поддержанные платформы***----------
+
+**Windows**
+
+**Linux/Gnome (45)**
 
 ##### \----------***Как установить (ПК/Windows)***----------
 ###### 1\) Скачайте новую версию со страницы Релизов.
