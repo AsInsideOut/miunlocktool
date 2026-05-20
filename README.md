@@ -11,8 +11,6 @@
 
 **Windows**
 
-**Linux/Gnome (45)**
-
 
 
 ##### \----------***How to install (PC/Windows)***----------
