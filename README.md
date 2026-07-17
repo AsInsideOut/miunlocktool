@@ -20,13 +20,20 @@
 
 
 
-#### \----------***How to install (PC/Linux)***----------
-###### 1\) Download the latest version from GitHub
-###### 2\) Unarchive the folder
-###### 3\) Open Terminal
-###### 4\) Use cd to the folder you just unarchived
-###### 5\) In terminal, enter the following command: flatpak install --user miunlock.flatpak
-###### If you already have another version installed, use the following command: flatpak install --user --reinstall miunlock.flatpak
+#### \----------***How to install (PC/Linux/MacOS)***----------
+###### 1\) Install any program that is able to run Python files.
+###### 2\) Use the latest Python version.
+###### 3\) Install the following modules:
+###### customtkinter
+###### packaging
+###### ntplib
+###### darkdetect
+###### pytz
+###### urllib3
+###### icmplib
+###### requests
+###### pygame-ce
+
 
 ##### \----------***INSTRUCTIONS***----------
 ###### 1\) Read the Welcome text and click "Continue".
