@@ -70,7 +70,7 @@ Telegram: @miunlocktoolrevamp
 Reddit: u/AsInsideOut
 
 
-Website: SOON
+Website: https://miunlock.su
 
 ##### ***SUPPORT THE PROJECT***
 ###### *I really appreciate all the help from you! Even without any support, i would still continue working on this project for people.*
@@ -147,7 +147,7 @@ Telegram: @miunlocktoolrevamp
 Reddit: u/AsInsideOut
 
 
-Сайт: СКОРО
+Сайт: https://miunlock.su
 
 ##### ***ПОДДЕРЖКА ПРОЕКТА***
 
