@@ -1,4 +1,3 @@
-![Logo](images/logo_tool.jpg)
 # **Xiaomi Unlock Tool**
 
 
