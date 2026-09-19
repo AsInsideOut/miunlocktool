@@ -9,7 +9,7 @@
 ##### \----------***Supported platforms***----------
 
 **Windows**
-
+**Android** (SOON)
 
 
 ##### \----------***How to install (PC/Windows)***----------
