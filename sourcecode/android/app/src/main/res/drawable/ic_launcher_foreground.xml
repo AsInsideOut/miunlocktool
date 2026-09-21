@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Centered Shield + Lightning Bolt -->
+    <path
+        android:fillColor="#EADDFF"
+        android:pathData="M54,22 C68,22 78,28 78,28 C78,54 66,74 54,84 C42,74 30,54 30,28 C30,28 40,22 54,22 Z" />
+    <path
+        android:fillColor="#21005D"
+        android:pathData="M55,34 L43,53 L52,53 L51,70 L63,50 L54,50 Z" />
+</vector>

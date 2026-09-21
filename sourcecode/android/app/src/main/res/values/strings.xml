@@ -1,0 +1,148 @@
+<resources>
+    <string name="app_name">Xiaomi Unlock Tool</string>
+    <string name="app_subtitle">v8.0</string>
+
+    <!-- Navigation -->
+    <string name="nav_apply">Apply</string>
+    <string name="nav_guide">Guide</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Apply Screen -->
+    <string name="section_token">Xiaomi Service Token</string>
+    <string name="token_hint">new_bbs_serviceToken</string>
+    <string name="token_paste">Paste</string>
+    <string name="token_clear">Clear</string>
+    <string name="token_check_status">Check Status</string>
+
+    <string name="status_title">Account Status</string>
+    <string name="status_not_checked">Not checked yet</string>
+    <string name="status_checking">Checking account state...</string>
+    <string name="status_ready">Ready to apply! Quota resets at 00:00:00</string>
+    <string name="status_approved">Account is already authorized until %s</string>
+    <string name="status_blocked">Account is temporarily blocked until %s</string>
+    <string name="status_too_new">Account is too new. Minimum 30 days registration required.</string>
+    <string name="status_expired">Token has expired or is invalid. Please get a fresh token.</string>
+    <string name="status_error">Error checking status: %s</string>
+
+    <!-- Clock and Timing -->
+    <string name="beijing_time_title">Beijing Time (CST UTC+8)</string>
+    <string name="beijing_countdown_title">Countdown to 00:00:00</string>
+    <string name="time_not_synced">Not synchronized</string>
+    <string name="time_syncing">Syncing NTP...</string>
+    <string name="btn_sync_ntp">Sync NTP</string>
+    <string name="ping_title">API Ping Latency</string>
+    <string name="ping_unmeasured">Not measured</string>
+    <string name="ping_measuring">Measuring ping...</string>
+    <string name="btn_measure_ping">Measure Ping</string>
+    <string name="send_offset_calc">Target trigger: %s</string>
+
+    <!-- Execution Modes -->
+    <string name="modes_title">Execution Mode</string>
+    <string name="mode_auto">Auto Mode</string>
+    <string name="mode_auto_desc">Fires high-speed requests with randomized device IDs around 23:59:58 Beijing time</string>
+    <string name="mode_manual">Manual Mode</string>
+    <string name="mode_manual_desc">Send immediate test request or manual burst</string>
+
+    <!-- Action Buttons -->
+    <string name="btn_start_auto">Start Application</string>
+    <string name="btn_stop_auto">Stop Application</string>
+    <string name="btn_send_now">Send Immediate Request</string>
+
+    <!-- Log Console -->
+    <string name="log_title">Execution Log</string>
+    <string name="log_clear">Clear</string>
+    <string name="log_copy">Copy</string>
+    <string name="log_copied">Logs copied to clipboard</string>
+    <string name="log_empty">Logs will appear here...</string>
+
+    <!-- Results & Dialogs -->
+    <string name="dialog_success_title">Application Approved!</string>
+    <string name="dialog_success_msg">Congratulations! Authorization granted. You can now bind your device in Settings > Developer Options > Mi Unlock Status.</string>
+    <string name="dialog_quota_title">Quota Exceeded</string>
+    <string name="dialog_quota_msg">Daily quota limit (1500 devices) has been reached. Please try again tomorrow at 00:00:00 Beijing time.\nDeadline: %s</string>
+    <string name="dialog_error_title">Notice</string>
+    <string name="dialog_ok">OK</string>
+
+    <!-- Guide Screen -->
+    <string name="guide_title">HyperOS Unlock Guide</string>
+
+    <string name="guide_step1_title">1. How to get new_bbs_serviceToken</string>
+    <string name="guide_step1_body">Install firefox browser on your phone\nInstall cookie-editor extension\nGo to c.mi.com/global\nOpen the cookie-editor extension and look for new_bbs_serviceToken\nCopy the value and paste it into the app</string>
+
+    <string name="guide_step2_title">2. Prerequisites &amp; Rules</string>
+    <string name="guide_step2_body">• Xiaomi Account must be active for at least 30 days.\n• HyperOS Global/EEA/ID/TW/RU are supported (Mainland China CNXM is excluded).\n• Xiaomi enforces a daily quota limit (~1500 devices) resetting at exactly 00:00:00 Beijing Time.\n• Once approved, unlock authorization remains valid for 1 year.</string>
+
+    <string name="guide_step3_title">3. Binding Device in Developer Options</string>
+    <string name="guide_step3_body">• After receiving approval in Xiaomi Unlock Tool, wait 1-2 minutes.\n• Turn OFF Wi-Fi and turn ON Mobile Data (SIM card with active data connection is required by Xiaomi).\n• Go to Settings > Additional Settings > Developer Options.\n• Tap \'Mi Unlock Status\' > tap \'Add account and device\'.\n• If successful, Xiaomi will show the standard waiting period (usually 72 hours / 168 hours).</string>
+
+    <string name="guide_step4_title">4. Common Errors &amp; Solutions</string>
+    <string name="guide_step4_body">• \"Couldn\'t add. Please go to Mi Community to apply\": Daily 1500 device quota reached. Try again next day at 00:00:00 Beijing time with Auto Mode.\n• \"System is being upgraded. Please try again later\": Common glitch on Redmi Note 13 series. Retry later.\n• \"Code 100004 / Token expired\": Your web session ended. Generate a fresh new_bbs_serviceToken.</string>
+
+    <!-- Settings Screen -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_section_appearance">Appearance</string>
+    <string name="settings_theme">Theme</string>
+    <string name="settings_theme_light">Light (White)</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_theme_system">Follow System</string>
+
+    <string name="settings_section_language">Language</string>
+    <string name="settings_lang_en">English</string>
+    <string name="settings_lang_ru">Русский</string>
+
+    <string name="settings_section_network">Network &amp; NTP Synchronization</string>
+    <string name="settings_ntp_server">NTP Server</string>
+    <string name="settings_ntp_google">Google (time.google.com)</string>
+    <string name="settings_ntp_android">Android (time.android.com)</string>
+    <string name="settings_ntp_cloudflare">Cloudflare (time.cloudflare.com)</string>
+
+    <string name="settings_section_timing">Burst &amp; Timing Parameters</string>
+    <string name="settings_burst_count">Burst Request Count</string>
+    <string name="settings_burst_count_summary">%d requests</string>
+    <string name="settings_burst_interval">Burst Interval</string>
+    <string name="settings_burst_interval_summary">%d ms</string>
+
+    <string name="settings_section_about">About</string>
+    <string name="settings_about_text">Xiaomi Unlock Tool v8.0</string>
+
+    <!-- Updates -->
+    <string name="settings_section_updates">Updates</string>
+    <string name="btn_check_update">Check for Updates</string>
+    <string name="update_checking">Checking for updates...</string>
+    <string name="update_available_title">Update Available</string>
+    <string name="update_available_msg">A new version (%1$s) is available!\nCurrent version is %2$s.\n\nDo you want to visit miunlock.su to download it?</string>
+    <string name="update_download_btn">Download</string>
+    <string name="update_cancel_btn">Cancel</string>
+    <string name="update_latest_title">Latest Version</string>
+    <string name="update_latest_msg">You are using the latest version (%s).</string>
+    <string name="update_error_title">Update Check Failed</string>
+    <string name="update_error_msg">Failed to connect to update server: %s</string>
+
+    <!-- Quick Tooltip / Toasts -->
+    <string name="toast_token_required">Please enter or paste your new_bbs_serviceToken first!</string>
+    <string name="toast_stopped">Application stopped.</string>
+    <string name="toast_started">Application scheduled. Waiting for Beijing midnight...</string>
+    <string name="toast_burst_started">Sending request burst...</string>
+
+    <!-- Login / Xiaomi Auth -->
+    <string name="login_btn">Log In to Account</string>
+    <string name="login_title">Xiaomi Account Authorization</string>
+    <string name="login_subtitle">Automatic New_bbs_serviceToken extraction</string>
+    <string name="login_tab_qr">QR Code</string>
+    <string name="login_qr_scan_tip">Scan the QR code in the Mi Community app\nor with your Xiaomi phone camera</string>
+    <string name="login_open_browser_btn">🌐 Open in Browser</string>
+    <string name="login_refresh_qr">🔄 Refresh QR Code</string>
+    <string name="login_waiting">Waiting for authorization confirmation...</string>
+    <string name="login_qr_expired">QR code expired. Click \'Refresh QR Code\'.</string>
+    <string name="login_loading_qr">⏳ Loading QR code...</string>
+    <string name="login_browser_opened">Login page opened in browser. Waiting for completion...</string>
+    <string name="login_refreshing_qr">Refreshing QR code...</string>
+    <string name="login_qr_fetch_error">Failed to fetch QR code: %s</string>
+    <string name="login_authorized_extracting">Authorization confirmed! Extracting token...</string>
+    <string name="login_extracting_token">Extracting token...</string>
+    <string name="login_session_expired">Session expired</string>
+    <string name="login_success">Authorization successful! new_bbs_serviceToken extracted.</string>
+    <string name="login_error">Authorization error: %s</string>
+    <string name="login_token_extract_error">Failed to extract token from server response.</string>
+    <string name="close_btn">Close</string>
+</resources>
