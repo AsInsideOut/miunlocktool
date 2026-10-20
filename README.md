@@ -1,5 +1,11 @@
 # **Xiaomi Unlock Tool**
 
+<p align="left">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0--only-blue.svg" alt="License: GPL-3.0-only"></a>
+  <a href="https://miunlock.su"><img src="https://img.shields.io/badge/Website-miunlock.su-orange.svg" alt="Official Website"></a>
+  <a href="https://t.me/miunlocktoolrevamp"><img src="https://img.shields.io/badge/Telegram-@miunlocktoolrevamp-2CA5E0?logo=telegram" alt="Telegram Community"></a>
+</p>
+
 
 
 ## **About**
@@ -160,3 +166,14 @@ Reddit: u/AsInsideOut
 **DonationAlerts: https://www.donationalerts.com/r/asinsideout**
 
 **DaLink: https://dalink.to/asinsideout**
+
+---
+
+### 📄 **License / Лицензия**
+
+This project is free software: you can redistribute it and/or modify it under the terms of the **GNU General Public License version 3 only** (`GPL-3.0-only`) as published by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the [LICENSE](LICENSE) file for more details.
+
+**SPDX-License-Identifier:** `GPL-3.0-only`  
+**Copyright:** (C) 2026 AsInsideOut
