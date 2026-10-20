@@ -1,4 +1,4 @@
-# 🚀 Xiaomi Unlock Tool (Mi Unlock Tool Revamp)
+# Xiaomi Unlock Tool (Mi Unlock Tool Revamp)
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0--only-blue.svg?style=for-the-badge" alt="License: GPL-3.0-only"></a>
@@ -20,9 +20,9 @@
 ---
 
 <a name="english"></a>
-## 🌐 English
+## English
 
-### 📌 Overview
+### Overview
 
 **Xiaomi Unlock Tool** is an open-source, community-driven utility designed to automate the bootloader unlock authorization process on Xiaomi, Redmi, and POCO smartphones running **Xiaomi HyperOS (1, 2, and 3)** as well as **MIUI 14**.
 
@@ -35,30 +35,30 @@ Xiaomi Unlock Tool solves this by combining:
 
 ---
 
-### ✨ Key Features
+### Key Features
 
-* **⚡ Sub-Millisecond Precision Engine:** Synchronizes against global atomic NTP clocks and auto-calibrates network round-trip time right at `23:59:59.xxx` Beijing time.
-* **🔒 Safe & Direct Protocol:** Communicates directly with Xiaomi's official endpoints over HTTPS. No middleman servers, no data logging, no credentials stored.
-* **🖥️ Modern Desktop GUI:** Crafted with CustomTkinter (Material Design 3 style), featuring dark/light themes, custom accent colors, and real-time logs.
-* **💻 Headless CLI Version:** Standalone Python CLI (`sourcecode/cli/miunlock_cli.py`) for servers, VPS, Linux, macOS, and automated cron setups.
-* **📱 Native Android App (In Development):** A Kotlin-based native app (`sourcecode/android`) allowing direct quota application from your phone without a PC.
-* **🔑 Flexible Authentication:** Supports automatic cookie extraction from Chromium-based browsers, manual token input, or instant QR-code login.
-* **🌍 Multi-Language Interface:** Full native support for 10+ languages (English, Russian, Spanish, Chinese, Turkish, Portuguese, Hindi, etc.).
-* **🎯 Regional Timing Profiles:** Pre-configured latency presets for Europe, Asia, and the Americas, plus up to 15 custom timing triggers.
+* **Sub-Millisecond Precision Engine:** Synchronizes against global atomic NTP clocks and auto-calibrates network round-trip time right at `23:59:59.xxx` Beijing time.
+* **Safe & Direct Protocol:** Communicates directly with Xiaomi's official endpoints over HTTPS. No middleman servers, no data logging, no credentials stored.
+* **Modern Desktop GUI:** Crafted with CustomTkinter (Material Design 3 style), featuring dark/light themes, custom accent colors, and real-time logs.
+* **Headless CLI Version:** Standalone Python CLI (`sourcecode/cli/miunlock_cli.py`) for servers, VPS, Linux, macOS, and automated cron setups.
+* **Native Android App (In Development):** A Kotlin-based native app (`sourcecode/android`) allowing direct quota application from your phone without a PC.
+* **Flexible Authentication:** Supports automatic cookie extraction from Chromium-based browsers, manual token input, or instant QR-code login.
+* **Multi-Language Interface:** Full native support for 10+ languages (English, Russian, Spanish, Chinese, Turkish, Portuguese, Hindi, etc.).
+* **Regional Timing Profiles:** Pre-configured latency presets for Europe, Asia, and the Americas, plus up to 15 custom timing triggers.
 
 ---
 
-### 📱 Supported Devices & Firmware
+### Supported Devices & Firmware
 
 | Firmware Region | Code | Support Status | Notes |
 | :--- | :---: | :---: | :--- |
-| **Global** | `MI` | ✅ Supported | Official global firmware |
-| **Europe** | `EEA` / `EU` | ✅ Supported | European Union devices |
-| **Russia** | `RU` | ✅ Supported | Russian regional firmware |
-| **India** | `IN` | ✅ Supported | Indian devices |
-| **Indonesia** | `ID` | ✅ Supported | Indonesian devices |
-| **Turkey / Taiwan** | `TR` / `TW` | ✅ Supported | Turkish & Taiwanese regional firmware |
-| **China** | `CN` | ❌ Not Supported | Requires Mainland China Mi Community Lv.5 status |
+| **Global** | `MI` | Supported | Official global firmware |
+| **Europe** | `EEA` / `EU` | Supported | European Union devices |
+| **Russia** | `RU` | Supported | Russian regional firmware |
+| **India** | `IN` | Supported | Indian devices |
+| **Indonesia** | `ID` | Supported | Indonesian devices |
+| **Turkey / Taiwan** | `TR` / `TW` | Supported | Turkish & Taiwanese regional firmware |
+| **China** | `CN` | Not Supported | Requires Mainland China Mi Community Lv.5 status |
 
 > [!IMPORTANT]
 > **Account Prerequisites:**
@@ -68,7 +68,7 @@ Xiaomi Unlock Tool solves this by combining:
 
 ---
 
-### 📥 Installation & Quick Start
+### Installation & Quick Start
 
 #### Option A: Windows (Pre-compiled Portable EXE)
 1. Download the latest `Xiaomi Unlock Tool 8.1.zip` from [Releases](https://github.com/AsInsideOut/miunlocktool/releases/latest) or our official website [miunlock.su](https://miunlock.su).
@@ -100,7 +100,7 @@ Xiaomi Unlock Tool solves this by combining:
 
 ---
 
-### 📖 Step-by-Step Instructions
+### Step-by-Step Instructions
 
 1. **Launch the tool** and review the initial welcome dialogue.
 2. Open **"Instructions and Script settings"** -> **"Getting Cookies"** and select your browser (or use the built-in QR Code login).
@@ -114,7 +114,7 @@ Xiaomi Unlock Tool solves this by combining:
 
 ---
 
-### ❓ Common Issues & Solutions
+### Common Issues & Solutions
 
 | Error Message | Cause & Recommended Action |
 | :--- | :--- |
@@ -125,16 +125,16 @@ Xiaomi Unlock Tool solves this by combining:
 
 ---
 
-### 📄 License
+### License
 
 This project is licensed under the **GNU General Public License v3.0 only** (`GPL-3.0-only`).  
 See the [LICENSE](LICENSE) file for the full legal text.
 
 * **Summary of Terms:**
-  * ✅ **Freedom:** You may run, study, modify, and redistribute this software.
-  * 📋 **Copyleft (Section 6):** All forks, modifications, and derivative distributions **MUST** be open-sourced under the exact same `GPL-3.0-only` license. Closed-source binary redistribution or proprietary repackaging is strictly prohibited.
-  * 🏷️ **Attribution (Sections 4, 5a, 5d):** Any derivative work **must preserve** all original copyright notices (`Copyright (C) 2026 AsInsideOut`), state that it was modified, and maintain visible legal notices in the UI / CLI.
-  * 🛡️ **No Warranty:** Provided "AS IS", without warranty of any kind.
+  * **Freedom:** You may run, study, modify, and redistribute this software.
+  * **Copyleft (Section 6):** All forks, modifications, and derivative distributions **MUST** be open-sourced under the exact same `GPL-3.0-only` license. Closed-source binary redistribution or proprietary repackaging is strictly prohibited.
+  * **Attribution (Sections 4, 5a, 5d):** Any derivative work **must preserve** all original copyright notices (`Copyright (C) 2026 AsInsideOut`), state that it was modified, and maintain visible legal notices in the UI / CLI.
+  * **No Warranty:** Provided "AS IS", without warranty of any kind.
 
 ```text
 SPDX-License-Identifier: GPL-3.0-only
@@ -143,14 +143,14 @@ Copyright (C) 2026 AsInsideOut
 
 ---
 
-### 💖 Credits & Acknowledgments
+### Credits & Acknowledgments
 
 * **[offici5l](https://github.com/offici5l/)** — Creator of the original Python-based *Xiaomi Flash Unlock* concept and pioneer in community unlock research.
 * **[AsInsideOut](https://github.com/AsInsideOut)** — Complete project revamp, custom NTP timing engine, CustomTkinter modern UI, CLI edition, and cross-platform ecosystem.
 
 ---
 
-### 📬 Contacts & Community
+### Contacts & Community
 
 * **Official Website:** [https://miunlock.su](https://miunlock.su) (Mirror: [https://miunlocktool.ru](https://miunlocktool.ru))
 * **Telegram Channel & Chat:** [@miunlocktoolrevamp](https://t.me/miunlocktoolrevamp)
@@ -158,7 +158,7 @@ Copyright (C) 2026 AsInsideOut
 * **Reddit:** [u/AsInsideOut](https://reddit.com/u/AsInsideOut)
 * **Support Email:** `support@miunlock.su`
 
-#### ☕ Support the Project
+#### Support the Project
 * **Crypto (USDT / TON):** `UQBCkvXTF-NiT7P8g0G-4oiAdsU81rMWJNYBTxDrbl76FabG`
 * **Bitcoin (BTC):** `bc1qzzt00sk0zdxgskw8xx8cjh4jl69wl7fvlshhsh`
 * **DonationAlerts:** [https://www.donationalerts.com/r/asinsideout](https://www.donationalerts.com/r/asinsideout)
@@ -167,9 +167,9 @@ Copyright (C) 2026 AsInsideOut
 ---
 
 <a name="русский"></a>
-## 🇷🇺 Русский
+## Русский
 
-### 📌 О проекте
+### О проекте
 
 **Xiaomi Unlock Tool** — это универсальная открытая утилита для автоматической и ручной подачи официальной заявки на разблокировку загрузчика (Bootloader Unlock) смартфонов Xiaomi, Redmi и POCO под управлением **Xiaomi HyperOS (версии 1, 2 и 3)**, а также **MIUI 14**.
 
@@ -182,30 +182,30 @@ Xiaomi Unlock Tool решает эту проблему благодаря:
 
 ---
 
-### ✨ Ключевые возможности
+### Ключевые возможности
 
-* **⚡ Субмиллисекундный тайминг-движок:** Автоматическая калибровка времени и задержки сети прямо перед `23:59:59.xxx` по Пекину.
-* **🔒 Безопасность и прямое подключение:** Запросы идут строго по HTTPS напрямую на серверы Xiaomi. Без прокси, без сторонних серверов и без сбора данных.
-* **🖥️ Современный графический интерфейс:** Построен на CustomTkinter (стиль Material Design 3) с поддержкой темной/светлой темы, выбором акцентных цветов и подробным логом.
-* **💻 Консольная версия (CLI):** Автономный терминальный скрипт (`sourcecode/cli/miunlock_cli.py`) для Linux, macOS, выделенных серверов (VPS) и Docker.
-* **📱 Нативное приложение Android (в разработке):** Приложение на Kotlin (`sourcecode/android`) для подачи заявки прямо со смартфона без ПК.
-* **🔑 Несколько способов авторизации:** Автоматический захват Cookies из браузеров, ручной ввод токена или быстрый вход по QR-коду.
-* **🌍 Полная мультиязычность:** Встроенная поддержка более 10 языков (русский, английский, испанский, китайский, турецкий и др.).
-* **🎯 Региональные профили:** Готовые пресеты задержек для Европы, Азии и Америки, плюс до 15 настраиваемых миллисекундных слотов отправки.
+* **Субмиллисекундный тайминг-движок:** Автоматическая калибровка времени и задержки сети прямо перед `23:59:59.xxx` по Пекину.
+* **Безопасность и прямое подключение:** Запросы идут строго по HTTPS напрямую на серверы Xiaomi. Без прокси, без сторонних серверов и без сбора данных.
+* **Современный графический интерфейс:** Построен на CustomTkinter (стиль Material Design 3) с поддержкой темной/светлой темы, выбором акцентных цветов и подробным логом.
+* **Консольная версия (CLI):** Автономный терминальный скрипт (`sourcecode/cli/miunlock_cli.py`) для Linux, macOS, выделенных серверов (VPS) и Docker.
+* **Нативное приложение Android (в разработке):** Приложение на Kotlin (`sourcecode/android`) для подачи заявки прямо со смартфона без ПК.
+* **Несколько способов авторизации:** Автоматический захват Cookies из браузеров, ручной ввод токена или быстрый вход по QR-коду.
+* **Полная мультиязычность:** Встроенная поддержка более 10 языков (русский, английский, испанский, китайский, турецкий и др.).
+* **Региональные профили:** Готовые пресеты задержек для Европы, Азии и Америки, плюс до 15 настраиваемых миллисекундных слотов отправки.
 
 ---
 
-### 📱 Поддерживаемые устройства и прошивки
+### Поддерживаемые устройства и прошивки
 
 | Регион прошивки | Индекс | Статус | Примечание |
 | :--- | :---: | :---: | :--- |
-| **Глобальная** | `MI` | ✅ Поддерживается | Официальная международная прошивка |
-| **Европейская** | `EEA` / `EU` | ✅ Поддерживается | Прошивка для стран ЕС |
-| **Россия** | `RU` | ✅ Поддерживается | Официальная русская прошивка |
-| **Индия** | `IN` | ✅ Поддерживается | Прошивка для индийского региона |
-| **Индонезия** | `ID` | ✅ Поддерживается | Прошивка для Индонезии |
-| **Турция / Тайвань** | `TR` / `TW` | ✅ Поддерживается | Региональные прошивки |
-| **Китай** | `CN` | ❌ Не поддерживается | Требует аккаунт 5 уровня в Mi Community Китая |
+| **Глобальная** | `MI` | Поддерживается | Официальная международная прошивка |
+| **Европейская** | `EEA` / `EU` | Поддерживается | Прошивка для стран ЕС |
+| **Россия** | `RU` | Поддерживается | Официальная русская прошивка |
+| **Индия** | `IN` | Поддерживается | Прошивка для индийского региона |
+| **Индонезия** | `ID` | Поддерживается | Прошивка для Индонезии |
+| **Турция / Тайвань** | `TR` / `TW` | Поддерживается | Региональные прошивки |
+| **Китай** | `CN` | Не поддерживается | Требует аккаунт 5 уровня в Mi Community Китая |
 
 > [!IMPORTANT]
 > **Обязательные требования к аккаунту:**
@@ -215,7 +215,7 @@ Xiaomi Unlock Tool решает эту проблему благодаря:
 
 ---
 
-### 📥 Установка и запуск
+### Установка и запуск
 
 #### Вариант 1: Windows (Готовый EXE-файл)
 1. Скачайте архив `Xiaomi Unlock Tool 8.1.zip` со страницы [Релизов](https://github.com/AsInsideOut/miunlocktool/releases/latest) или с официального сайта [miunlock.su](https://miunlock.su).
@@ -247,7 +247,7 @@ Xiaomi Unlock Tool решает эту проблему благодаря:
 
 ---
 
-### 📖 Пошаговая инструкция
+### Пошаговая инструкция
 
 1. Запустите программу и ознакомьтесь с приветственным окном.
 2. Откройте **«Инструкции и настройки скрипта»** -> **«Получить Cookies»** и выберите ваш браузер (или используйте вход по QR-коду).
@@ -261,7 +261,7 @@ Xiaomi Unlock Tool решает эту проблему благодаря:
 
 ---
 
-### ❓ Частые ошибки и их решения
+### Частые ошибки и их решения
 
 | Ошибка | Причина и что делать |
 | :--- | :--- |
@@ -272,16 +272,16 @@ Xiaomi Unlock Tool решает эту проблему благодаря:
 
 ---
 
-### 📄 Лицензия
+### Лицензия
 
 Проект распространяется на условиях лицензии **GNU General Public License v3.0 only** (`GPL-3.0-only`).  
 Полный текст лицензии находится в файле [LICENSE](LICENSE).
 
 * **Основные условия:**
-  * ✅ **Свобода:** Разрешено свободное использование, изучение, изменение и распространение утилиты.
-  * 📋 **Строгий Copyleft (Секция 6):** Любые форки, производные сборки и модификации **ОБЯЗАНЫ** публиковаться под той же лицензией `GPL-3.0-only` с открытием полного исходного кода. Запрещено закрывать код или делать платные сборки.
-  * 🏷️ **Сохранение авторства (Секции 4, 5a, 5d):** Форки **обязаны сохранять** оригинальные копирайты (`Copyright (C) 2026 AsInsideOut`), уведомление о том, что код модифицирован, и правовые ссылки в интерфейсе.
-  * 🛡️ **Без гарантий:** Программа предоставляется «как есть», без явных или косвенных гарантий.
+  * **Свобода:** Разрешено свободное использование, изучение, изменение и распространение утилиты.
+  * **Строгий Copyleft (Секция 6):** Любые форки, производные сборки и модификации **ОБЯЗАНЫ** публиковаться под той же лицензией `GPL-3.0-only` с открытием полного исходного кода. Запрещено закрывать код или делать платные сборки.
+  * **Сохранение авторства (Секции 4, 5a, 5d):** Форки **обязаны сохранять** оригинальные копирайты (`Copyright (C) 2026 AsInsideOut`), уведомление о том, что код модифицирован, и правовые ссылки в интерфейсе.
+  * **Без гарантий:** Программа предоставляется «как есть», без явных или косвенных гарантий.
 
 ```text
 SPDX-License-Identifier: GPL-3.0-only
@@ -290,14 +290,14 @@ Copyright (C) 2026 AsInsideOut
 
 ---
 
-### 💖 Благодарности
+### Благодарности
 
 * **[offici5l](https://github.com/offici5l/)** — Автор оригинальной концепции Python-скрипта *Xiaomi Flash Unlock* и первопроходец в исследовании протоколов разблокировки.
 * **[AsInsideOut](https://github.com/AsInsideOut)** — Полный ревамп проекта, разработка NTP тайминг-движка, графического интерфейса CustomTkinter, CLI-версии и экосистемы утилиты.
 
 ---
 
-### 📬 Контакты и сообщество
+### Контакты и сообщество
 
 * **Официальный сайт:** [https://miunlock.su](https://miunlock.su) (Зеркало: [https://miunlocktool.ru](https://miunlocktool.ru))
 * **Telegram канал и чат:** [@miunlocktoolrevamp](https://t.me/miunlocktoolrevamp)
@@ -305,7 +305,7 @@ Copyright (C) 2026 AsInsideOut
 * **Reddit:** [u/AsInsideOut](https://reddit.com/u/AsInsideOut)
 * **Электронная почта:** `support@miunlock.su`
 
-#### ☕ Поддержать проект
+#### Поддержать проект
 * **Криптовалюта (USDT / TON):** `UQBCkvXTF-NiT7P8g0G-4oiAdsU81rMWJNYBTxDrbl76FabG`
 * **Bitcoin (BTC):** `bc1qzzt00sk0zdxgskw8xx8cjh4jl69wl7fvlshhsh`
 * **DonationAlerts:** [https://www.donationalerts.com/r/asinsideout](https://www.donationalerts.com/r/asinsideout)
