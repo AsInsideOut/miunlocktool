@@ -58,7 +58,7 @@ COLOR_TIP_BORDER = "#3B82F6" # Синяя рамка подсказок
 COLOR_TIP_TEXT = "#93C5FD"   # Четкий текст подсказок
 
 SECTIONS_DATA = {
-    'uk': {
+    'ua': {
         'about': {
             'title': "Про програму",
             'app_name': "Xiaomi Unlock Tool",
@@ -432,13 +432,16 @@ SECTIONS_DATA = {
 }
 
 
+SECTIONS_DATA['uk'] = SECTIONS_DATA['ua']
+
+
 def get_section_data(lang, section):
     lang_dict = SECTIONS_DATA.get(lang, SECTIONS_DATA['en'])
     return lang_dict.get(section, SECTIONS_DATA['en'].get(section, {}))
 
 
 def get_site_btn_text(lang):
-    if lang in ('ru', 'uk'):
+    if lang in ('ru', 'ua', 'uk'):
         return "Сайт"
     elif lang in ('en', 'pt'):
         return "Website"

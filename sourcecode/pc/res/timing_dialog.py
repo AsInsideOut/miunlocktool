@@ -20,6 +20,7 @@ TIMING_PROFILES = {
     'europe': {
         'id': 'europe',
         'name_ru': 'Европейский',
+        'name_ua': 'Європейський',
         'name_uk': 'Європейський',
         'name_en': 'Europe',
         'timings': [58.700, 58.800, 59.100, 59.300, 59.500, 59.800],
@@ -29,6 +30,7 @@ TIMING_PROFILES = {
     'asia': {
         'id': 'asia',
         'name_ru': 'Азиатский',
+        'name_ua': 'Азійський',
         'name_uk': 'Азійський',
         'name_en': 'Asia',
         'timings': [58.800, 59.100, 59.300, 59.500, 59.700],
@@ -38,6 +40,7 @@ TIMING_PROFILES = {
     'usa_africa': {
         'id': 'usa_africa',
         'name_ru': 'США / Африка',
+        'name_ua': 'США / Африка',
         'name_uk': 'США / Африка',
         'name_en': 'USA / Africa',
         'timings': [58.500, 58.800, 59.100, 59.300, 59.500, 59.700],

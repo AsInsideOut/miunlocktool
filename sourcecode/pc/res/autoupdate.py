@@ -37,7 +37,7 @@ def get_update_urls(lang=None):
 
 # Multilingual localization dictionaries
 LOCALES = {
-    'uk': {
+    'ua': {
         'app_title': 'Xiaomi Unlock Tool - Автооновлення',
         'checking': 'Перевірка наявності оновлень...',
         'up_to_date_title': 'Оновлень немає',
@@ -171,6 +171,9 @@ LOCALES = {
         'error_msg': 'Ocorreu um erro durante a atualização:\n{error}',
     },
 }
+
+
+LOCALES['uk'] = LOCALES['ua']
 
 
 def get_user_language():

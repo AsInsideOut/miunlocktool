@@ -216,8 +216,8 @@ def get_system_language():
             lang_lower = lang.lower()
             if lang_lower.startswith("ru"):
                 return "ru"
-            elif lang_lower.startswith("uk") or "ukrainian" in lang_lower:
-                return "uk"
+            elif lang_lower.startswith("ua") or lang_lower.startswith("uk") or "ukrainian" in lang_lower:
+                return "ua"
             elif lang_lower.startswith("id") or lang_lower.startswith("in") or "indonesian" in lang_lower:
                 return "id"
             elif lang_lower.startswith("es") or "spanish" in lang_lower:
@@ -232,8 +232,8 @@ def get_system_language():
     env_lang = (os.environ.get("LANG", "") + os.environ.get("LANGUAGE", "")).lower()
     if "ru" in env_lang:
         return "ru"
-    elif "uk" in env_lang or "ukrainian" in env_lang:
-        return "uk"
+    elif "ua" in env_lang or "uk" in env_lang or "ukrainian" in env_lang:
+        return "ua"
     elif "id" in env_lang or "in" in env_lang or "indonesian" in env_lang:
         return "id"
     elif "es" in env_lang or "spanish" in env_lang:
@@ -1293,7 +1293,7 @@ class XiaomiUnlockTool:
 
         self.language_optionmenu = ctk.CTkOptionMenu(
             self.language_optionmenu_wrap,
-            values=['ru', 'en', 'uk', 'id', 'es', 'zh', 'pt'],
+            values=['ru', 'en', 'ua', 'id', 'es', 'zh', 'pt'],
             variable=self.language_var,
             width=96,
             height=30,
@@ -2261,7 +2261,7 @@ class XiaomiUnlockTool:
         MD3Label(language_frame, text=self.translation.tr('language_label'), typography='label_large').pack(anchor="w")
         ctk.CTkOptionMenu(
             language_frame,
-            values=['ru', 'en', 'uk', 'id', 'es', 'zh', 'pt'],
+            values=['ru', 'en', 'ua', 'id', 'es', 'zh', 'pt'],
             variable=self.language_var,
             width=200,
             height=40,
@@ -3742,8 +3742,8 @@ class XiaomiUnlockTool:
 
         if self.translation.language == 'ru':
             prof_name = prof_info.get('name_ru', prof_info['name_en'])
-        elif self.translation.language == 'uk':
-            prof_name = prof_info.get('name_uk', prof_info['name_en'])
+        elif self.translation.language in ('ua', 'uk'):
+            prof_name = prof_info.get('name_ua', prof_info.get('name_uk', prof_info['name_en']))
         else:
             prof_name = prof_info['name_en']
         timings_str = ", ".join(f"{t:.3f}s" for t in self.selected_timings)
