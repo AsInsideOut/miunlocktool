@@ -1,6 +1,6 @@
 <resources>
     <string name="app_name">Xiaomi Unlock Tool</string>
-    <string name="app_subtitle">v8.0</string>
+    <string name="app_subtitle">v8.2</string>
 
     <!-- Navigation -->
     <string name="nav_apply">Подача заявок</string>
@@ -56,12 +56,19 @@
     <string name="log_empty">Здесь появятся логи выполнения...</string>
 
     <!-- Results & Dialogs -->
-    <string name="dialog_success_title">Заявка одобрена!</string>
+    <string name="dialog_success_title">Успех!</string>
     <string name="dialog_success_msg">Поздравляем! Авторизация успешно получена. Теперь вы можете привязать аккаунт в Настройки > Для разработчиков > Статус Mi Unlock.</string>
-    <string name="dialog_quota_title">Квота исчерпана</string>
-    <string name="dialog_quota_msg">Дневной лимит (1500 устройств) исчерпан на сегодня. Попробуйте снова завтра в 00:00:00 по Пекину.\nСрок: %s</string>
+    <string name="dialog_quota_title">Успех!</string>
+    <string name="dialog_quota_msg">Все заявки получили код 0 (Успех). Попробуйте привязать аккаунт в настройках разработчика.</string>
     <string name="dialog_error_title">Уведомление</string>
     <string name="dialog_ok">OK</string>
+
+    <!-- Live Notification -->
+    <string name="notif_channel_name">Статус подачи заявки</string>
+    <string name="notif_channel_desc">Таймер и статус отправки заявки на разблокировку</string>
+    <string name="notif_countdown">До отправки: %s</string>
+    <string name="notif_sending">Отправка</string>
+    <string name="notif_success">Успех!</string>
 
     <!-- Guide Screen -->
     <string name="guide_title">Инструкция по HyperOS Unlock</string>
@@ -89,6 +96,14 @@
     <string name="settings_section_language">Язык интерфейса</string>
     <string name="settings_lang_en">English</string>
     <string name="settings_lang_ru">Русский</string>
+    <string name="settings_lang_uk">Українська</string>
+    <string name="settings_lang_es">Español</string>
+    <string name="settings_lang_pt">Português</string>
+    <string name="settings_lang_id">Bahasa Indonesia</string>
+    <string name="settings_lang_zh">简体中文</string>
+    <string name="downloading_language_pack">Загрузка языкового пакета: %s...</string>
+    <string name="language_pack_downloaded">Языковой пакет успешно применён!</string>
+    <string name="language_pack_error">Не удалось скачать языковой пакет. Проверьте сеть.</string>
 
     <string name="settings_section_network">Сеть и синхронизация NTP</string>
     <string name="settings_ntp_server">Сервер точного времени (NTP)</string>
@@ -96,23 +111,48 @@
     <string name="settings_ntp_android">Android (time.android.com)</string>
     <string name="settings_ntp_cloudflare">Cloudflare (time.cloudflare.com)</string>
 
+    <!-- Timing Profiles -->
+    <string name="settings_section_timing_profile">Региональные профили таймингов</string>
+    <string name="settings_profile_europe">Европейский (58.700, 58.800, 59.100, 59.300, 59.500, 59.800)</string>
+    <string name="settings_profile_asia">Азиатский (58.800, 59.100, 59.300, 59.500, 59.700)</string>
+    <string name="settings_profile_usa_africa">США / Африка (58.500, 58.800, 59.100, 59.300, 59.500, 59.700)</string>
+    <string name="settings_profile_custom">Пользовательские тайминги</string>
+    <string name="settings_custom_timings_hint">Введите тайминги через запятую (например, 58.700, 58.800)</string>
+
     <string name="settings_section_timing">Параметры серии запросов</string>
     <string name="settings_burst_count">Количество запросов в серии</string>
     <string name="settings_burst_count_summary">%d запросов</string>
     <string name="settings_burst_interval">Интервал серии</string>
     <string name="settings_burst_interval_summary">%d мс</string>
 
-    <string name="settings_section_about">О программе</string>
-    <string name="settings_about_text">Xiaomi Unlock Tool v8.0</string>
+    <string name="settings_section_about">О программе и авторы</string>
+    <string name="settings_about_text">Инструмент для автоматической отправки заявки на разблокировку загрузчика устройств Xiaomi на Global HyperOS.\n\nВерсия скрипта: 8.2</string>
+    <string name="authors_title">Авторы</string>
+    <string name="authors_devs_title">Разработчики Скрипта</string>
+    <string name="authors_devs_body">• pktloss, New G3n\n• Разработчик PC и CLI версии: New G3n\n• Разработчик Сайта и Android версии: pktloss\n• На основе скрипта: Vierta</string>
+    <string name="authors_social_title">Ссылки на Соц Сети</string>
+    <string name="authors_link_tg">Telegram: @miunlocktoolrevamp</string>
+    <string name="authors_link_4pda">Тема на 4PDA</string>
+    <string name="authors_link_github">GitHub: AsInsideOut/miunlocktool</string>
+    <string name="authors_link_web">Сайт: miunlocktool.ru</string>
+    <string name="authors_donate_title">Пожертвовать на разработку</string>
+    <string name="authors_donate_da">DonationAlerts: dalink.to/asinsideout</string>
+    <string name="authors_donate_crypto">USDT сеть TON:</string>
+    <string name="authors_wallet_address">UQBCkvXTF-NiT7P8g0G-4oiAdsU81rMWJNYBTxDrbl76FabG</string>
+    <string name="authors_wallet_copied">Адрес TON USDT скопирован в буфер обмена!</string>
+    <string name="copy_address_btn">Копировать адрес</string>
 
     <!-- Updates -->
     <string name="settings_section_updates">Обновления</string>
     <string name="btn_check_update">Проверить обновления</string>
     <string name="update_checking">Проверка наличия обновлений...</string>
     <string name="update_available_title">Доступно обновление</string>
-    <string name="update_available_msg">Доступна новая версия (%1$s)!\nТекущая версия: %2$s.\n\nХотите перейти на сайт miunlock.su и скачать обновление?</string>
-    <string name="update_download_btn">Скачать</string>
+    <string name="update_available_msg">Доступна новая версия (%1$s)!\nТекущая версия: %2$s.\n\nСкачать и установить обновление?</string>
+    <string name="update_download_btn">Скачать и установить</string>
     <string name="update_cancel_btn">Отмена</string>
+    <string name="update_downloading">Загрузка обновления (%d%%)...</string>
+    <string name="update_installing">Запуск установщика APK...</string>
+    <string name="update_download_error">Ошибка загрузки обновления: %s</string>
     <string name="update_latest_title">Актуальная версия</string>
     <string name="update_latest_msg">У вас установлена последняя версия (%s).</string>
     <string name="update_error_title">Ошибка проверки обновлений</string>
@@ -145,4 +185,35 @@
     <string name="login_error">Ошибка авторизации: %s</string>
     <string name="login_token_extract_error">Не удалось извлечь токен из ответа сервера.</string>
     <string name="close_btn">Закрыть</string>
+
+    <!-- Accent Color Styling -->
+    <string name="settings_section_styling">Внешний вид и стиль</string>
+    <string name="settings_accent_color">Цвет оформления</string>
+    <string name="settings_color_purple">Фиолетовый</string>
+    <string name="settings_color_blue">Синий</string>
+    <string name="settings_color_orange">Оранжевый</string>
+    <string name="settings_color_green">Зелёный</string>
+    <string name="settings_color_red">Красный</string>
+    <string name="settings_color_cyan">Бирюзовый</string>
+    <string name="settings_color_custom">Свой цвет</string>
+    <string name="settings_color_hex_hint">HEX: #2196F3 или #09F</string>
+    <string name="settings_apply_color">Применить</string>
+    <string name="settings_invalid_hex">Неверный формат HEX (напр. #2196F3 или #09F)</string>
+    <string name="settings_color_applied">Цвет оформления обновлён!</string>
+
+    <!-- Fastboot USB OTG -->
+    <string name="fastboot_title">Fastboot (USB OTG)</string>
+    <string name="fastboot_status_no_device">USB-устройство не обнаружено</string>
+    <string name="fastboot_status_attached">Подключено: %s</string>
+    <string name="fastboot_status_permission_required">Требуется разрешение</string>
+    <string name="fastboot_status_permission_denied">В разрешении USB отказано</string>
+    <string name="fastboot_status_connected">Подключено: %s</string>
+    <string name="fastboot_status_disconnected">Отключено</string>
+    <string name="fastboot_btn_connect">Подключить</string>
+    <string name="fastboot_btn_disconnect">Отключить</string>
+    <string name="fastboot_btn_get_product">Получить Product</string>
+    <string name="fastboot_btn_get_token">Получить Token</string>
+    <string name="fastboot_product_label">Product: %s</string>
+    <string name="fastboot_token_label">Token: %s</string>
+    <string name="fastboot_info_hint">Подключите разблокируемый Xiaomi в режиме Fastboot через USB OTG кабель</string>
 </resources>

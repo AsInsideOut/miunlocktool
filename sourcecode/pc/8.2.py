@@ -1,33 +1,19 @@
-# SPDX-License-Identifier: GPL-3.0-only
-# Copyright (C) 2026 AsInsideOut
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, version 3 of the License.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
 import subprocess
 import sys
 import os
-import hashlib
-import random
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import tkinter as tk
 from tkinter import messagebox, colorchooser
 import webbrowser
 import re
 import threading
+import queue
+import collections
+import heapq
 import json
 import colorsys
-import requests as requests_lib
+import concurrent.futures
 
 base_path = os.path.dirname(os.path.abspath(__file__))
 if base_path not in sys.path:
@@ -56,21 +42,13 @@ except ImportError:
         )
         sys.exit(1)
 
-try:
-    import ntplib
-    import pytz
-    import urllib3
-    import statistics
-    import requests
-except ImportError:
-    pass
 
 try:
     from res.theme import *
     from res.api_handler import RequestHandler
-    from res.settings import WelcomeWindow, InstructionsWindow, UpdateChecker
+    from res.settings import WelcomeWindow, UpdateChecker, get_update_check_url, get_update_download_url
     from res.lang import Translation
-    from res.xiaomi_auth import XiaomiAuthDialog, XiaomiAuthPanel
+    from res.xiaomi_auth import XiaomiAuthPanel
     from res.settings_ui import (
         build_about_section, build_general_section,
         build_cookies_section, build_trouble_section
@@ -80,6 +58,7 @@ try:
         TIMING_PROFILES, parse_timing_value
     )
     from res.color_picker import CustomColorPickerDialog
+    from res.hyperos_bypass import HyperOSBypassPanel
 except ImportError:
     if getattr(sys, 'frozen', False):
         base_path = os.path.dirname(sys.executable)
@@ -93,9 +72,9 @@ except ImportError:
 
     from theme import *
     from api_handler import RequestHandler
-    from settings import WelcomeWindow, InstructionsWindow, UpdateChecker
+    from settings import WelcomeWindow, UpdateChecker, get_update_check_url, get_update_download_url
     from lang import Translation
-    from xiaomi_auth import XiaomiAuthDialog, XiaomiAuthPanel
+    from xiaomi_auth import XiaomiAuthPanel
     from settings_ui import (
         build_about_section, build_general_section,
         build_cookies_section, build_trouble_section
@@ -105,26 +84,18 @@ except ImportError:
         TIMING_PROFILES, parse_timing_value
     )
     from color_picker import CustomColorPickerDialog
+    from hyperos_bypass import HyperOSBypassPanel
 
 # Всегда используем темную тему
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
-CURRENT_VERSION = "8.1"
-VERSION_CODE = 700300
+CURRENT_VERSION = "8.2"
 
 CONFIG_DIR = os.path.join(os.environ['APPDATA'], 'MiUnlockTool') if os.name == 'nt' else os.path.join(os.path.expanduser('~'), '.config', 'MiUnlockTool')
 CONFIG_FILE = os.path.join(CONFIG_DIR, 'config.json')
 
-ntp_servers = [
-    "time1.google.com", "time2.google.com", "time3.google.com", "time4.google.com", "time.android.com",
-    "time.aws.com", "time.google.com", "time.cloudflare.com",
-    "ntp.time.in.ua", "stratum1.net", "ntp5.stratum2.ru"
-]
-
 MI_SERVERS = ['sgp-api.buy.mi.com']
-
-os.system('cls' if os.name == 'nt' else 'clear')
 
 
 class MaterialColors:
@@ -223,78 +194,6 @@ class MD3Button(ctk.CTkButton):
             self.configure(border_color=border_color)
 
 
-class MD3SegmentedButton(ctk.CTkFrame):
-    def __init__(self, master, values, variable, command=None, **kwargs):
-        super().__init__(master, **kwargs)
-        self.values = values
-        self.variable = variable
-        self.command = command
-        self.buttons = []
-        self.button_frame = None
-        self.create_buttons()
-
-    def create_buttons(self):
-        if self.button_frame:
-            self.button_frame.destroy()
-
-        self.configure(fg_color=MaterialColors.get_color('surface_container'), corner_radius=24)
-
-        self.button_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.button_frame.pack(fill="both", expand=True, padx=2, pady=2)
-
-        self.buttons = []
-        for i, value in enumerate(self.values):
-            btn = ctk.CTkButton(
-                self.button_frame,
-                text=value,
-                height=36,
-                corner_radius=20,
-                fg_color=MaterialColors.get_color('surface_container_low'),
-                hover_color=MaterialColors.get_color('surface_container'),
-                text_color=MaterialColors.get_color('on_surface')
-            )
-            btn.configure(command=lambda v=value: self.select(v))
-            btn.pack(side="left", fill="both", expand=True, padx=2, pady=2)
-            self.buttons.append(btn)
-
-        current = self.variable.get()
-        if current in self.values:
-            self.select(current)
-
-    def update_values(self, new_values):
-        self.values = new_values
-        self.create_buttons()
-
-    def select(self, value):
-        for btn, val in zip(self.buttons, self.values):
-            if val == value:
-                btn.configure(
-                    fg_color=MaterialColors.get_color('primary'),
-                    text_color=MaterialColors.get_color('on_primary')
-                )
-            else:
-                btn.configure(
-                    fg_color=MaterialColors.get_color('surface_container_low'),
-                    text_color=MaterialColors.get_color('on_surface')
-                )
-        self.variable.set(value)
-        if self.command:
-            self.command(value)
-
-    def update_colors(self):
-        self.configure(fg_color=MaterialColors.get_color('surface_container'))
-        for btn, val in zip(self.buttons, self.values):
-            if self.variable.get() == val:
-                btn.configure(
-                    fg_color=MaterialColors.get_color('primary'),
-                    text_color=MaterialColors.get_color('on_primary')
-                )
-            else:
-                btn.configure(
-                    fg_color=MaterialColors.get_color('surface_container_low'),
-                    text_color=MaterialColors.get_color('on_surface')
-                )
-
 
 class MD3Entry(ctk.CTkEntry):
     def __init__(self, master, **kwargs):
@@ -317,6 +216,8 @@ def get_system_language():
             lang_lower = lang.lower()
             if lang_lower.startswith("ru"):
                 return "ru"
+            elif lang_lower.startswith("uk") or "ukrainian" in lang_lower:
+                return "uk"
             elif lang_lower.startswith("id") or lang_lower.startswith("in") or "indonesian" in lang_lower:
                 return "id"
             elif lang_lower.startswith("es") or "spanish" in lang_lower:
@@ -331,6 +232,8 @@ def get_system_language():
     env_lang = (os.environ.get("LANG", "") + os.environ.get("LANGUAGE", "")).lower()
     if "ru" in env_lang:
         return "ru"
+    elif "uk" in env_lang or "ukrainian" in env_lang:
+        return "uk"
     elif "id" in env_lang or "in" in env_lang or "indonesian" in env_lang:
         return "id"
     elif "es" in env_lang or "spanish" in env_lang:
@@ -403,7 +306,8 @@ def load_config():
         'login_pwd': '',
         'login_wb_id': '',
         'region': detect_user_region(),
-        'animations_enabled': True
+        'animations_enabled': True,
+        'beijing_clock_collapsed': False
     }
 
     if not os.path.exists(CONFIG_FILE):
@@ -455,28 +359,621 @@ def _on_key_release(event):
         event.widget.event_generate("<<Copy>>")
 
 
+class FooterToolTip:
+    """Всплывающая подсказка Material 3 для плашки-подвала."""
+    def __init__(self, widget, text_getter):
+        self.widget = widget
+        self.text_getter = text_getter
+        self.tip_window = None
+        self.after_id = None
+        widget.bind('<Enter>', self.schedule, add='+')
+        widget.bind('<Leave>', self.hide, add='+')
+        widget.bind('<ButtonPress>', self.hide, add='+')
+
+    def schedule(self, event=None):
+        self.unschedule()
+        try:
+            self.after_id = self.widget.after(450, self.show)
+        except Exception:
+            pass
+
+    def unschedule(self):
+        if self.after_id:
+            try:
+                self.widget.after_cancel(self.after_id)
+            except Exception:
+                pass
+            self.after_id = None
+
+    def show(self, event=None):
+        if self.tip_window or not self.widget.winfo_exists():
+            return
+        try:
+            x = self.widget.winfo_rootx() + 10
+            y = self.widget.winfo_rooty() - 85
+            self.tip_window = tw = tk.Toplevel(self.widget)
+            tw.wm_overrideredirect(True)
+            tw.wm_geometry(f"+{x}+{y}")
+            tw.attributes("-topmost", True)
+
+            text = self.text_getter() if callable(self.text_getter) else self.text_getter
+            container = tk.Frame(
+                tw,
+                bg=MaterialColors.get_color('surface_container_highest'),
+                padx=10,
+                pady=7,
+                highlightbackground=MaterialColors.get_color('outline_variant'),
+                highlightthickness=1
+            )
+            container.pack()
+            lbl = tk.Label(
+                container,
+                text=text,
+                justify='left',
+                bg=MaterialColors.get_color('surface_container_highest'),
+                fg=MaterialColors.get_color('on_surface'),
+                font=('Arial', 9)
+            )
+            lbl.pack()
+        except Exception:
+            self.hide()
+
+    def hide(self, event=None):
+        self.unschedule()
+        if self.tip_window:
+            try:
+                self.tip_window.destroy()
+            except Exception:
+                pass
+            self.tip_window = None
+
+
+class FooterTitleLabel(ctk.CTkLabel):
+    """Специальный лейбл заголовка подвала, адаптирующийся под смену режима и языка."""
+    def __init__(self, master, outer, is_mi=False, **kwargs):
+        super().__init__(master, **kwargs)
+        self.outer = outer
+        self.is_mi = is_mi
+
+    def configure(self, **kwargs):
+        if 'text' in kwargs:
+            raw = kwargs.pop('text')
+            if self.is_mi:
+                new_text = self.outer.translation.tr('tab_mi_unlock')
+            else:
+                mode_val = getattr(self.outer, 'mode_var', None)
+                manual_text = self.outer.translation.tr('manual_mode')
+                desc_manual_line = self.outer.translation.tr('desc_manual').splitlines()[0] if self.outer.translation.tr('desc_manual') else ''
+                is_manual = (
+                    ('desc_manual' in str(raw)) or 
+                    (desc_manual_line and desc_manual_line in str(raw)) or 
+                    (mode_val and mode_val.get() == manual_text)
+                )
+                if is_manual:
+                    new_text = f"{self.outer.translation.tr('main_title')} • {manual_text}"
+                else:
+                    new_text = self.outer.translation.tr('main_title')
+            kwargs['text'] = new_text
+        super().configure(**kwargs)
+
+
+
+class ThreadCoordinator:
+    """
+    Hardware-adaptive thread coordinator.
+    Allocates and bounds execution streams:
+    - High-core CPUs (cores > 2): 4 managed threads total (Main + Send + BgWorker + TimeEngine), strictly <= 5 active.
+    - Low-core / weak CPUs (cores <= 2): 2 managed threads total:
+        * Thread 1: Dedicated Send stream (isolated network dispatching)
+        * Thread 2: Main GUI thread (handles UI, cooperative time tracking, and cooperative jobs)
+    """
+    def __init__(self, app):
+        self.app = app
+        self.root = getattr(app, 'root', None)
+        self.cpu_count = os.cpu_count() or 2
+        self.is_weak_cpu = self.cpu_count <= 2
+        self._running = True
+
+        # --- STREAM 2: Main GUI Dispatch Queue (Thread-Safe UI Bridge) ---
+        self._ui_queue = queue.Queue()
+        if self.root is not None:
+            self._schedule_ui_drain()
+
+        # --- STREAM 1: Send Dispatcher (Dedicated Network / Send Thread) ---
+        self._send_cond = threading.Condition()
+        self._send_scheduled = []  # min-heap of (target_perf, seq, func, args, kwargs)
+        self._send_immediate = collections.deque()
+        self._send_seq = 0
+        self._send_executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=32,
+            thread_name_prefix="SendWorker"
+        )
+        self.send_thread = threading.Thread(
+            target=self._send_dispatcher_loop,
+            name="SendDispatcherThread",
+            daemon=True
+        )
+        self.send_thread.start()
+
+        # --- STREAM 3 & 4 (High-core mode) vs STREAM 2 Cooperative (Weak-core mode) ---
+        if not self.is_weak_cpu:
+            # STREAM 3: Background Worker Thread (updates, async disk logs, eligibility)
+            self._bg_queue = queue.Queue()
+            self._log_queue = queue.Queue()
+            self.bg_worker_thread = threading.Thread(
+                target=self._bg_worker_loop,
+                name="BgWorkerThread",
+                daemon=True
+            )
+            self.bg_worker_thread.start()
+
+            # STREAM 4: Time Calculation & Sync Engine
+            self._time_lock = threading.Lock()
+            self._time_sync_active = False
+            self._start_beijing_time = None
+            self._start_perf = 0.0
+            self._last_ui_clock_update = 0.0
+            self._ping_target = None
+            self._ping_callback = None
+            self._multi_target = None
+            self._multi_callback = None
+            self._single_target = None
+            self._single_callback = None
+            self.time_engine_thread = threading.Thread(
+                target=self._time_engine_loop,
+                name="TimeEngineThread",
+                daemon=True
+            )
+            self.time_engine_thread.start()
+        else:
+            self._bg_queue = None
+            self._log_queue = None
+            self.bg_worker_thread = None
+            self.time_engine_thread = None
+            self._time_sync_active = False
+            self._start_beijing_time = None
+            self._start_perf = 0.0
+            self._ping_target = None
+            self._ping_callback = None
+            self._multi_target = None
+            self._multi_callback = None
+            self._single_target = None
+            self._single_callback = None
+
+    def _schedule_ui_drain(self):
+        if not self._running:
+            return
+        if self.root is not None:
+            try:
+                if hasattr(self.root, 'winfo_exists') and not self.root.winfo_exists():
+                    return
+                self._drain_after_id = self.root.after(15, self._drain_ui_queue)
+            except Exception:
+                pass
+
+    def _drain_ui_queue(self):
+        if not self._running:
+            return
+        try:
+            processed = 0
+            while not self._ui_queue.empty() and processed < 64:
+                try:
+                    func, args, kwargs = self._ui_queue.get_nowait()
+                    func(*args, **kwargs)
+                    processed += 1
+                except (queue.Empty, Exception):
+                    break
+        finally:
+            self._schedule_ui_drain()
+
+    def post_to_ui(self, func, *args, **kwargs):
+        """Safely executes func on Main GUI Thread (Thread 2) with microsecond non-blocking dispatch."""
+        if self.root is None or threading.current_thread() is threading.main_thread():
+            try:
+                func(*args, **kwargs)
+            except Exception as e:
+                print(f"[UI] Direct execution error: {e}")
+        else:
+            self._ui_queue.put((func, args, kwargs))
+
+    def submit_send(self, func, *args, **kwargs):
+        """Submits an immediate network/send task to Dedicated Send Thread (Thread 1)."""
+        with self._send_cond:
+            self._send_immediate.append((func, args, kwargs))
+            self._send_cond.notify()
+
+    def schedule_send_in(self, delay_seconds, func, *args, **kwargs):
+        """Schedules a send task after delay_seconds on Thread 1 with microsecond precision."""
+        target_perf = time.perf_counter() + max(0.0, float(delay_seconds))
+        with self._send_cond:
+            self._send_seq += 1
+            heapq.heappush(self._send_scheduled, (target_perf, self._send_seq, func, args, kwargs))
+            self._send_cond.notify()
+
+    def _execute_send_task(self, func, args, kwargs):
+        try:
+            func(*args, **kwargs)
+        except Exception as e:
+            print(f"[SendWorker] Error executing task: {e}")
+
+    def _dispatch_send(self, func, args, kwargs):
+        """Asynchronously dispatches network request task immediately without waiting for server response."""
+        if not self._running:
+            return
+        dispatched = False
+        if hasattr(self, '_send_executor') and self._send_executor is not None:
+            try:
+                self._send_executor.submit(self._execute_send_task, func, args, kwargs)
+                dispatched = True
+            except Exception:
+                dispatched = False
+        if not dispatched:
+            try:
+                th = threading.Thread(
+                    target=self._execute_send_task,
+                    args=(func, args, kwargs),
+                    daemon=True
+                )
+                th.start()
+            except Exception as e:
+                print(f"[SendDispatcher] Failed to dispatch task: {e}")
+
+    def _send_dispatcher_loop(self):
+        while self._running:
+            func = None
+            args = ()
+            kwargs = {}
+            with self._send_cond:
+                while self._running and not self._send_immediate and not self._send_scheduled:
+                    self._send_cond.wait(timeout=0.2)
+
+                if not self._running:
+                    break
+
+                # 1. Immediate tasks take top priority
+                if self._send_immediate:
+                    func, args, kwargs = self._send_immediate.popleft()
+                # 2. Check scheduled tasks
+                elif self._send_scheduled:
+                    target_perf = self._send_scheduled[0][0]
+                    now = time.perf_counter()
+                    remaining = target_perf - now
+                    if remaining <= 0:
+                        _, _, func, args, kwargs = heapq.heappop(self._send_scheduled)
+                    elif remaining > 0.003:
+                        # Sleep until 2ms before target
+                        self._send_cond.wait(timeout=remaining - 0.002)
+                        continue
+                    else:
+                        # High-precision spin-wait for microsecond accuracy
+                        while time.perf_counter() < target_perf:
+                            pass
+                        _, _, func, args, kwargs = heapq.heappop(self._send_scheduled)
+
+            if func is not None:
+                self._dispatch_send(func, args, kwargs)
+
+    def submit_bg_task(self, func, *args, **kwargs):
+        """Submits a background task to Worker Stream (Thread 3) or cooperative executor."""
+        if not self.is_weak_cpu and self._bg_queue is not None:
+            self._bg_queue.put((func, args, kwargs))
+        else:
+            # On weak CPUs: Thread 2 handles all non-send computations
+            if self.root is not None:
+                try:
+                    self.root.after(10, lambda: func(*args, **kwargs))
+                except Exception:
+                    func(*args, **kwargs)
+            else:
+                func(*args, **kwargs)
+
+    def queue_log_write(self, formatted_message):
+        """Dispatches log writing to disk asynchronously without blocking send or UI."""
+        if not self.app.settings.get('log_to_txt', True):
+            return
+
+        if not self.is_weak_cpu and self._log_queue is not None:
+            self._log_queue.put(formatted_message)
+        else:
+            self._write_log_direct(formatted_message)
+
+    def _write_log_direct(self, formatted_message):
+        try:
+            target_file = getattr(self.app, 'current_log_file', None)
+            if not target_file and hasattr(self.app, '_ensure_log_file'):
+                self.app._ensure_log_file()
+                target_file = getattr(self.app, 'current_log_file', None)
+            if target_file:
+                with open(target_file, 'a', encoding='utf-8') as f:
+                    f.write(formatted_message)
+        except Exception as e:
+            print(f"[Logger] Write error: {e}")
+
+    def _bg_worker_loop(self):
+        while self._running:
+            # 1. Drain batched log messages
+            if self._log_queue is not None:
+                batch = []
+                while not self._log_queue.empty():
+                    try:
+                        batch.append(self._log_queue.get_nowait())
+                    except queue.Empty:
+                        break
+                if batch:
+                    self._write_log_direct("".join(batch))
+
+            # 2. Process background tasks
+            if self._bg_queue is not None:
+                try:
+                    task = self._bg_queue.get(timeout=0.1)
+                    if task is None or not self._running:
+                        break
+                    func, args, kwargs = task
+                    try:
+                        func(*args, **kwargs)
+                    except Exception as e:
+                        print(f"[BgWorker] Task error: {e}")
+                        self._bg_queue.task_done()
+                except queue.Empty:
+                    pass
+
+    def arm_time_sync(self, start_beijing_time, start_timestamp):
+        """Arms precision Beijing time tracking."""
+        self._start_beijing_time = start_beijing_time
+        self._start_perf = time.perf_counter()
+        self._time_sync_active = True
+        self._last_ui_clock_update = 0.0
+
+    def get_synced_beijing_time(self):
+        """Calculates current Beijing time based on perf_counter elapsed."""
+        if not self._time_sync_active or not self._start_beijing_time:
+            return None
+        elapsed = time.perf_counter() - self._start_perf
+        return self._start_beijing_time + timedelta(seconds=elapsed)
+
+    def watch_ping_target(self, target_ping_start, on_reached):
+        """Watches for target schedule time (compatibility redirect)."""
+        self.watch_multi_target(target_ping_start, on_reached)
+
+    def watch_multi_target(self, schedule_time, on_reached):
+        """Watches for manual multi-request schedule time."""
+        self._multi_target = schedule_time
+        self._multi_callback = on_reached
+        if self.is_weak_cpu and self.root is not None:
+            self._cooperative_multi_check()
+
+    def _cooperative_multi_check(self):
+        if not self._time_sync_active or not self._multi_target:
+            return
+        now = self.get_synced_beijing_time()
+        if now and now >= self._multi_target:
+            cb = self._multi_callback
+            self._multi_target = None
+            self._multi_callback = None
+            if cb:
+                cb()
+        else:
+            if self.root is not None:
+                self.root.after(50, self._cooperative_multi_check)
+
+    def watch_single_target(self, send_at, on_reached):
+        """Watches for single request target time."""
+        self._single_target = send_at
+        self._single_callback = on_reached
+        if self.is_weak_cpu and self.root is not None:
+            self._cooperative_single_check()
+
+    def _cooperative_single_check(self):
+        if not self._time_sync_active or not self._single_target:
+            return
+        now = self.get_synced_beijing_time()
+        if now and now >= self._single_target:
+            cb = self._single_callback
+            self._single_target = None
+            self._single_callback = None
+            if cb:
+                cb()
+        else:
+            if self.root is not None:
+                self.root.after(20, self._cooperative_single_check)
+
+    def _time_engine_loop(self):
+        """STREAM 4: Time Calculation & Sync Engine loop."""
+        while self._running:
+            try:
+                if self._time_sync_active and self._start_beijing_time:
+                    now = self.get_synced_beijing_time()
+                    now_perf = time.perf_counter()
+
+                    # 1. Check Multi Target
+                    if self._multi_target and now and now >= self._multi_target:
+                        cb = self._multi_callback
+                        self._multi_target = None
+                        self._multi_callback = None
+                        if cb:
+                            self.post_to_ui(cb)
+
+                    # 3. Check Single Target
+                    if self._single_target and now and now >= self._single_target:
+                        cb = self._single_callback
+                        self._single_target = None
+                        self._single_callback = None
+                        if cb:
+                            self.submit_send(cb)
+
+                    # 4. Periodic UI Clock string update (every 100ms)
+                    if now and now_perf - self._last_ui_clock_update >= 0.10:
+                        self._last_ui_clock_update = now_perf
+                        time_str = now.strftime('%Y-%m-%d %H:%M:%S')
+                        if hasattr(self.app, '_update_clock_text'):
+                            self.post_to_ui(self.app._update_clock_text, time_str)
+
+                time.sleep(0.01)
+            except Exception as e:
+                time.sleep(0.05)
+
+    def cancel_active_targets(self):
+        """Cancels any pending single or multi targets and scheduled sends."""
+        self._single_target = None
+        self._single_callback = None
+        self._multi_target = None
+        self._multi_callback = None
+        with self._send_cond:
+            self._send_scheduled.clear()
+            self._send_immediate.clear()
+
+    def stop(self):
+        """Stops all background threads gracefully."""
+        self._running = False
+        if getattr(self, '_drain_after_id', None) and self.root:
+            try:
+                self.root.after_cancel(self._drain_after_id)
+            except Exception:
+                pass
+            self._drain_after_id = None
+
+        with self._send_cond:
+            self._send_cond.notify_all()
+
+        if hasattr(self, '_send_executor') and self._send_executor is not None:
+            try:
+                self._send_executor.shutdown(wait=False)
+            except Exception:
+                pass
+
+        if getattr(self, '_bg_queue', None) is not None:
+            try:
+                self._bg_queue.put(None)
+            except Exception:
+                pass
+
+        for th in (getattr(self, 'send_thread', None), getattr(self, 'bg_worker_thread', None), getattr(self, 'time_engine_thread', None)):
+            if th and th.is_alive() and th is not threading.current_thread():
+                th.join(timeout=0.3)
+
+
+class LanguageDownloadPopup(ctk.CTkToplevel):
+    """Мини-попап, отображаемый во время реального скачивания языкового пакета."""
+    def __init__(self, parent, lang_code, lang_display_name, translation=None):
+        super().__init__(parent)
+        self.parent = parent
+        self.lang_code = lang_code
+        self.translation = translation
+
+        ctk.set_appearance_mode("Dark")
+        is_ru = getattr(translation, 'language', 'ru') == 'ru'
+        win_title = translation.tr('lang_download_title') if translation else ("Скачивание языка" if is_ru else "Downloading Language")
+        self.title(win_title)
+
+        win_w = 380
+        win_h = 135
+        try:
+            parent.update_idletasks()
+            pw = parent.winfo_width()
+            ph = parent.winfo_height()
+            px = parent.winfo_rootx()
+            py = parent.winfo_rooty()
+            pos_x = max(0, px + (pw - win_w) // 2)
+            pos_y = max(0, py + (ph - win_h) // 2)
+        except Exception:
+            screen_w = self.winfo_screenwidth()
+            screen_h = self.winfo_screenheight()
+            pos_x = max(0, (screen_w - win_w) // 2)
+            pos_y = max(0, (screen_h - win_h) // 2)
+
+        self.geometry(f"{win_w}x{win_h}+{pos_x}+{pos_y}")
+        self.resizable(False, False)
+        self.transient(parent)
+        self.attributes('-topmost', True)
+
+        self.protocol("WM_DELETE_WINDOW", self.close)
+
+        card = ctk.CTkFrame(
+            self,
+            fg_color=MaterialColors.get_color('surface_container_high'),
+            corner_radius=14,
+            border_width=1,
+            border_color=MaterialColors.get_color('outline_variant')
+        )
+        card.pack(fill="both", expand=True, padx=8, pady=8)
+
+        content_row = ctk.CTkFrame(card, fg_color="transparent")
+        content_row.pack(fill="x", padx=16, pady=(14, 6))
+
+        icon_label = ctk.CTkLabel(
+            content_row,
+            text="📥",
+            font=("Segoe UI Emoji", 24),
+            width=32
+        )
+        icon_label.pack(side="left", padx=(0, 10))
+
+        text_col = ctk.CTkFrame(content_row, fg_color="transparent")
+        text_col.pack(side="left", fill="x", expand=True)
+
+        header_text = translation.tr('lang_download_msg') if translation else ("Скачивание языкового пакета..." if is_ru else "Downloading language pack...")
+        self.title_label = ctk.CTkLabel(
+            text_col,
+            text=header_text,
+            font=("Arial", 13, "bold"),
+            text_color=MaterialColors.get_color('on_surface'),
+            anchor="w"
+        )
+        self.title_label.pack(fill="x")
+
+        sub_domain = "miunlocktool.ru" if self.translation.language == "ru" else "miunlock.su"
+        sub_text = f"{lang_display_name} • {sub_domain}"
+        self.sub_label = ctk.CTkLabel(
+            text_col,
+            text=sub_text,
+            font=("Arial", 11),
+            text_color=MaterialColors.get_color('on_surface_variant'),
+            anchor="w"
+        )
+        self.sub_label.pack(fill="x", pady=(2, 0))
+
+        self.progress_bar = ctk.CTkProgressBar(
+            card,
+            height=6,
+            corner_radius=3,
+            mode="indeterminate",
+            progress_color=MaterialColors.get_color('primary')
+        )
+        self.progress_bar.pack(fill="x", padx=16, pady=(10, 10))
+        self.progress_bar.start()
+
+    def close(self):
+        try:
+            self.progress_bar.stop()
+        except Exception:
+            pass
+        try:
+            self.destroy()
+        except Exception:
+            pass
+
+
 class XiaomiUnlockTool:
     def __init__(self, root):
         self.root = root
         self.config = load_config()
         self.translation = Translation(self.config.get('language', 'ru'))
 
-        self.instructions_windows = []
-
         self.root.title(self.translation.tr('title'))
 
         # Responsive sizing: fits 700p/720p screens while supporting fullscreen expansion
         screen_w = self.root.winfo_screenwidth()
         screen_h = self.root.winfo_screenheight()
-        default_w = 980
+        default_w = 1100
         default_h = 620
         if screen_h <= 720:
             default_h = min(620, max(540, screen_h - 70))
-            default_w = min(980, max(800, screen_w - 40))
+        if screen_w < 1140:
+            default_w = max(800, screen_w - 40)
         pos_x = max(0, (screen_w - default_w) // 2)
         pos_y = max(0, (screen_h - default_h) // 2 - 20)
         self.root.geometry(f"{default_w}x{default_h}+{pos_x}+{pos_y}")
-        self.root.minsize(800, 520)
+        self.root.minsize(min(1100, screen_w), 520)
         self.root.resizable(True, True)
 
         # Fullscreen bindings (F11 toggles, Escape exits)
@@ -519,7 +1016,7 @@ class XiaomiUnlockTool:
             'log_to_txt': self.config.get('log_to_txt', True),
             'language': self.config.get('language', 'ru'),
             'region': saved_region,
-            'animations_enabled': False,
+            'animations_enabled': bool(self.config.get('animations_enabled', True)),
             'timing_profile': initial_profile,
             'auto_timings': self.config.get('auto_timings', list(profile_timings)),
             'custom_primary_color': saved_theme_color
@@ -527,12 +1024,16 @@ class XiaomiUnlockTool:
         self.selected_timings = list(self.settings.get('auto_timings', profile_timings))
         self.skip_cookie_check_var = ctk.BooleanVar(value=self.settings.get('skip_cookie_check', False))
         self.log_to_txt_var = ctk.BooleanVar(value=self.settings.get('log_to_txt', True))
-        self.animations_enabled_var = ctk.BooleanVar(value=False)
-        self.settings_language_var = ctk.StringVar(value=self.settings.get('language', 'ru'))
+        self.animations_enabled_var = ctk.BooleanVar(value=bool(self.settings.get('animations_enabled', True)))
+        self.beijing_clock_collapsed = bool(self.config.get('beijing_clock_collapsed', False))
+        self.beijing_clock_container = None
+        self.beijing_collapsed_btn = None
+        self.beijing_collapse_btn = None
         self.config['theme'] = 'Dark'
         self.config['region'] = self.settings['region']
-        self.config['animations_enabled'] = False
+        self.config['animations_enabled'] = self.settings['animations_enabled']
         self.config['timing_profile'] = self.current_timing_profile
+        self.animations_checkbox = None
 
         self.cookie_value = ctk.StringVar(value=self.config.get('cookie', ''))
         self.language_var = ctk.StringVar(value=self.settings.get('language', self.translation.language))
@@ -566,14 +1067,24 @@ class XiaomiUnlockTool:
         self.create_material_ui()
 
         self.request_handler = RequestHandler(self)
+        self.thread_coordinator = ThreadCoordinator(self)
+        try:
+            self.root.protocol("WM_DELETE_WINDOW", self.exit_application)
+        except Exception:
+            pass
 
         self.start_beijing_time = None
         self.start_timestamp = None
-        self.ping_measurement_done = threading.Event()
-        self.measured_ping_http = None
-        self.measured_ping_tcp = None
+
+        self.current_log_file = None
+        try:
+            if self.settings.get('log_to_txt', True):
+                self._ensure_log_file()
+        except Exception:
+            pass
 
         self.show_welcome_if_needed()
+        self._tick_beijing_clock()
 
     def auto_save_cookie(self, *args):
         try:
@@ -596,7 +1107,8 @@ class XiaomiUnlockTool:
 
     def open_site(self):
         try:
-            webbrowser.open("https://miunlock.su/", new=2)
+            site_url = "https://miunlocktool.ru/" if getattr(self, "translation", None) and self.translation.language == "ru" else "https://miunlock.su/"
+            webbrowser.open(site_url, new=2)
         except Exception as e:
             print(f"Site link open error: {e}")
 
@@ -631,11 +1143,72 @@ class XiaomiUnlockTool:
         if new_lang == self.translation.language:
             return
 
-        self.translation.language = new_lang
-        self.settings['language'] = new_lang
-        self.language_var.set(new_lang)
+        if self.translation.is_download_needed(new_lang):
+            self._download_and_apply_language(new_lang)
+        else:
+            self._apply_language(new_lang)
+
+    def _apply_language(self, new_lang):
+        success = self.translation.set_language(new_lang)
+        if not success:
+            self.language_var.set(self.translation.language)
+            return
+
+        self.settings['language'] = self.translation.language
+        self.language_var.set(self.translation.language)
         self.save_settings()
+        if hasattr(self, '_clear_settings_cache'):
+            self._clear_settings_cache()
         self.update_ui_text()
+
+    def _download_and_apply_language(self, new_lang):
+        lang_name = Translation.get_display_name(new_lang)
+        popup = LanguageDownloadPopup(self.root, new_lang, lang_name, self.translation)
+        finished = [False]
+
+        def on_finish(success):
+            if finished[0]:
+                return
+            finished[0] = True
+            popup.close()
+            if not success:
+                try:
+                    from tkinter import messagebox
+                    err_msg = self.translation.tr('lang_download_failed', lang_name)
+                    messagebox.showerror(
+                        self.translation.tr('error_title'),
+                        err_msg
+                    )
+                except Exception:
+                    pass
+                self.language_var.set(self.translation.language)
+                return
+
+            self.settings['language'] = self.translation.language
+            self.language_var.set(self.translation.language)
+            self.save_settings()
+            if hasattr(self, '_clear_settings_cache'):
+                self._clear_settings_cache()
+            self.update_ui_text()
+
+        # Watchdog: close popup after 12 seconds if network completely stalled
+        self.root.after(12000, lambda: on_finish(False) if not finished[0] else None)
+
+        def worker():
+            success = False
+            try:
+                start_t = time.time()
+                success = self.translation.set_language(new_lang)
+                elapsed = time.time() - start_t
+                if elapsed < 0.3:
+                    time.sleep(0.3 - elapsed)
+            except Exception as e:
+                print(f"[LanguageDownload] Error downloading language '{new_lang}': {e}")
+                success = False
+            finally:
+                self.root.after(0, lambda: on_finish(success))
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def show_welcome_if_needed(self):
         first_run = self.config.get('first_run', True)
@@ -656,7 +1229,8 @@ class XiaomiUnlockTool:
                 self.settings['skip_cookie_check'] = bool(self.skip_cookie_check_var.get())
             if hasattr(self, 'log_to_txt_var'):
                 self.settings['log_to_txt'] = bool(self.log_to_txt_var.get())
-            self.settings['animations_enabled'] = False
+            if hasattr(self, 'animations_enabled_var'):
+                self.settings['animations_enabled'] = bool(self.animations_enabled_var.get())
             if hasattr(self, 'language_var'):
                 self.settings['language'] = self.language_var.get()
             self.settings['theme'] = 'Dark'
@@ -664,7 +1238,7 @@ class XiaomiUnlockTool:
             self.config['theme'] = 'Dark'
             self.config['language'] = self.settings.get('language', self.translation.language)
             self.config['log_to_txt'] = self.settings['log_to_txt']
-            self.config['animations_enabled'] = False
+            self.config['animations_enabled'] = self.settings.get('animations_enabled', True)
             self.config['region'] = self.settings.get('region', detect_user_region())
             self.config['cookie'] = self.cookie_value.get()
             self.config['login_user'] = self.settings.get('login_user', '')
@@ -680,14 +1254,6 @@ class XiaomiUnlockTool:
             print(f"Ошибка сохранения настроек: {e}")
             return False
 
-    def apply_theme(self, theme: str):
-        self.settings['theme'] = 'Dark'
-        ctk.set_appearance_mode('Dark')
-        self.update_md3_colors()
-
-    def update_colors(self):
-        pass
-
     def create_material_ui(self):
         dark_mode = True
 
@@ -697,85 +1263,25 @@ class XiaomiUnlockTool:
         )
         self.main_container.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # === TOP BAR (без кнопок Mi Unlock и Инструкции) ===
+        # === TOP BAR (с кнопками вкладок) ===
         self.top_bar = MD3Card(self.main_container, elevation=1)
         self.top_bar.pack(fill="x", pady=(0, 8), padx=0)
 
         top_bar_inner = ctk.CTkFrame(self.top_bar, fg_color="transparent")
         top_bar_inner.pack(fill="x", padx=18, pady=10)
 
-        # Левая часть - заголовок и соцсети
+        # Левая часть - заголовок
         title_frame = ctk.CTkFrame(top_bar_inner, fg_color="transparent")
-        title_frame.pack(side="left", fill="y")
+        title_frame.pack(side="left")
 
         self.title_label = MD3Label(
             title_frame,
             text=self.translation.tr('main_title'),
             typography='headline_medium'
         )
-        self.title_label.pack(anchor="w")
+        self.title_label.pack(side="left")
 
-        self.social_stack = ctk.CTkFrame(title_frame, fg_color="transparent")
-        self.social_stack.pack(anchor="w", pady=(5, 0))
-
-        self.telegram_btn = ctk.CTkButton(
-            self.social_stack,
-            text=self.translation.tr('social_telegram'),
-            width=104,
-            height=30,
-            corner_radius=10,
-            fg_color="#5B8DEF",
-            hover_color="#4A7AE6",
-            text_color="#F8FBFF",
-            border_width=0,
-            command=self.open_telegram
-        )
-        self.telegram_btn.pack(side="left", padx=(0, 6))
-
-        self.fourpda_btn = ctk.CTkButton(
-            self.social_stack,
-            text="4PDA",
-            width=88,
-            height=30,
-            corner_radius=10,
-            fg_color="#607D9B",
-            hover_color="#506B85",
-            text_color="#F5F8FC",
-            border_width=0,
-            command=self.open_4pda
-        )
-        self.fourpda_btn.pack(side="left", padx=(0, 6))
-
-        self.github_btn = ctk.CTkButton(
-            self.social_stack,
-            text=self.translation.tr('social_github'),
-            width=96,
-            height=30,
-            corner_radius=10,
-            fg_color="#1B1F24",
-            hover_color="#2A3138",
-            text_color="#F3F4F6",
-            border_width=0,
-            command=self.open_github
-        )
-        self.github_btn.pack(side="left", padx=(0, 6))
-
-        self.site_btn = ctk.CTkButton(
-            self.social_stack,
-            text=self._get_site_button_text(),
-            width=118,
-            height=30,
-            corner_radius=10,
-            fg_color=MaterialColors.get_color('surface_container_high'),
-            hover_color=MaterialColors.get_color('surface_container_highest'),
-            text_color=MaterialColors.get_color('on_surface'),
-            border_width=1,
-            border_color=MaterialColors.get_color('outline_variant'),
-            command=self.open_site
-        )
-        self.site_btn.pack(side="left")
-
-        # Правая часть - язык, логин
+        # Правая часть - язык, регион
         self.language_optionmenu_wrap = ctk.CTkFrame(
             top_bar_inner,
             fg_color="transparent",
@@ -787,7 +1293,7 @@ class XiaomiUnlockTool:
 
         self.language_optionmenu = ctk.CTkOptionMenu(
             self.language_optionmenu_wrap,
-            values=['ru', 'en', 'id', 'es', 'zh', 'pt'],
+            values=['ru', 'en', 'uk', 'id', 'es', 'zh', 'pt'],
             variable=self.language_var,
             width=96,
             height=30,
@@ -812,54 +1318,77 @@ class XiaomiUnlockTool:
         )
         self.header_region_label.pack(side="right", padx=(0, 10))
 
-        # === TAB NAVIGATION BAR ===
-        self.tab_bar = ctk.CTkFrame(self.main_container, fg_color="transparent")
-        self.tab_bar.pack(fill="x", pady=(0, 8), padx=16)
-
-        tab_buttons_frame = ctk.CTkFrame(self.tab_bar, fg_color="transparent")
-        tab_buttons_frame.pack(anchor="center")
+        # Центральная часть - кнопки вкладок на верхней панели
+        self.tab_bar = ctk.CTkFrame(top_bar_inner, fg_color="transparent")
+        self.tab_bar.pack(side="left", expand=True)
 
         self.tab_buttons['settings'] = MD3Button(
-            tab_buttons_frame,
+            self.tab_bar,
             text=self.translation.tr('tab_settings'),
             button_type='outlined',
-            size='medium',
+            size='small',
+            height=32,
+            corner_radius=10,
+            font=("Arial", 12),
             command=lambda: self.switch_tab("settings")
         )
-        self.tab_buttons['settings'].pack(side="left", padx=(0, 10))
+        self.tab_buttons['settings'].pack(side="left", padx=(0, 6))
 
         self.tab_buttons['unlock'] = MD3Button(
-            tab_buttons_frame,
+            self.tab_bar,
             text=self.translation.tr('tab_unlock'),
             button_type='filled',
-            size='medium',
+            size='small',
+            height=32,
+            corner_radius=10,
+            font=("Arial", 12),
             command=lambda: self.switch_tab("unlock")
         )
-        self.tab_buttons['unlock'].pack(side="left", padx=(0, 10))
+        self.tab_buttons['unlock'].pack(side="left", padx=(0, 6))
+
+        # Левее кнопки Mi Unlock: плажка и кнопка HyperOS 1 Bypass
+        self.tab_buttons['hyperos1_bypass'] = MD3Button(
+            self.tab_bar,
+            text=self.translation.tr('tab_hyperos1_bypass'),
+            button_type='outlined',
+            size='small',
+            height=32,
+            corner_radius=10,
+            font=("Arial", 12),
+            command=lambda: self.switch_tab("hyperos1_bypass")
+        )
+        self.tab_buttons['hyperos1_bypass'].pack(side="left", padx=(0, 6))
 
         self.tab_buttons['mi_unlock'] = MD3Button(
-            tab_buttons_frame,
+            self.tab_bar,
             text=self.translation.tr('tab_mi_unlock'),
             button_type='outlined',
-            size='medium',
+            size='small',
+            height=32,
+            corner_radius=10,
+            font=("Arial", 12),
             command=lambda: self.switch_tab("mi_unlock")
         )
-        self.tab_buttons['mi_unlock'].pack(side="left", padx=(0, 0))
+        self.tab_buttons['mi_unlock'].pack(side="left", padx=0)
 
         # === CONTENT AREA ===
         self.content_area = ctk.CTkFrame(self.main_container, fg_color="transparent")
         self.content_area.pack(fill="both", expand=True, padx=16)
 
         # Создаем контейнеры для каждой вкладки
-        self.tab_containers['unlock'] = ctk.CTkFrame(self.content_area, fg_color="transparent")
-        self.tab_containers['settings'] = ctk.CTkFrame(self.content_area, fg_color="transparent")
-        self.tab_containers['mi_unlock'] = ctk.CTkFrame(self.content_area, fg_color="transparent")
+        self.tab_containers['unlock'] = ctk.CTkFrame(self.content_area, fg_color=MaterialColors.get_color('background'))
+        self.tab_containers['settings'] = ctk.CTkFrame(self.content_area, fg_color=MaterialColors.get_color('background'))
+        self.tab_containers['hyperos1_bypass'] = ctk.CTkFrame(self.content_area, fg_color=MaterialColors.get_color('background'))
+        self.tab_containers['mi_unlock'] = ctk.CTkFrame(self.content_area, fg_color=MaterialColors.get_color('background'))
 
         # Создаем UI для вкладки "Подача заявок"
         self._create_unlock_tab()
 
         # Создаем встроенную вкладку "Настройки и инструкции"
         self._create_settings_tab()
+
+        # Создаем вкладку-заглушку "HyperOS 1 Bypass"
+        self._create_hyperos1_bypass_tab()
 
         # Создаем UI для вкладки "Mi Unlock"
         self._create_mi_unlock_tab()
@@ -870,19 +1399,174 @@ class XiaomiUnlockTool:
         self.toggle_mode(self.mode_var.get())
 
         # Показываем первую вкладку по умолчанию
+        self.current_tab = None
         self.switch_tab("unlock")
+
+    def _get_footer_tooltip_text(self, is_mi=False):
+        try:
+            key = 'mi_unlock_desc' if is_mi else (
+                'desc_manual' if getattr(self, 'mode_var', None) and self.mode_var.get() == self.translation.tr('manual_mode') else 'desc'
+            )
+            raw_desc = self.translation.tr(key).strip()
+            lang = getattr(self.translation, 'language', getattr(self, 'current_language', 'ru'))
+            if lang == 'ru':
+                hint = "\n(Нажмите, чтобы открыть раздел 'Авторы')"
+            else:
+                hint = "\n(Click to open 'Authors' section)"
+            return f"{raw_desc}{hint}"
+        except Exception:
+            return f"Xiaomi Unlock Tool v{CURRENT_VERSION}\npktloss • New G3n"
+
+    @staticmethod
+    def _setup_hover_outline(btn, default_border='#202020', hover_border='#FFFFFF', default_border_width=1):
+        btn.configure(border_width=default_border_width, border_color=default_border)
+        def on_enter(e):
+            try:
+                if hasattr(btn, 'winfo_exists') and btn.winfo_exists():
+                    btn.configure(border_color=hover_border)
+            except Exception:
+                pass
+        def on_leave(e):
+            try:
+                if hasattr(btn, 'winfo_exists') and btn.winfo_exists():
+                    btn.configure(border_color=default_border)
+            except Exception:
+                pass
+        for target in [btn, getattr(btn, '_canvas', None), getattr(btn, '_text_label', None)]:
+            if target:
+                target.bind('<Enter>', on_enter, add='+')
+                target.bind('<Leave>', on_leave, add='+')
+
+    def _create_compact_footer(self, parent, is_mi=False):
+        """Создает стильную и компактную плашку-подвал Material 3 (версия, разработчики, название)."""
+        prefix = 'mi_' if is_mi else ''
+
+        footer_frame = ctk.CTkFrame(
+            parent,
+            height=36,
+            corner_radius=10,
+            fg_color=MaterialColors.get_color('surface_container_low'),
+            border_width=1,
+            border_color=MaterialColors.get_color('outline_variant')
+        )
+        footer_frame.pack_propagate(False)
+
+        left_box = ctk.CTkFrame(footer_frame, fg_color="transparent")
+        left_box.pack(side="left", padx=(8, 4), pady=4)
+
+        badge_frame = ctk.CTkFrame(
+            left_box,
+            corner_radius=6,
+            fg_color=MaterialColors.get_color('primary_container')
+        )
+        badge_frame.pack(side="left")
+
+        badge_lbl = ctk.CTkLabel(
+            badge_frame,
+            text=f"v{CURRENT_VERSION}",
+            font=("Arial", 10, "bold"),
+            text_color=MaterialColors.get_color('on_primary_container')
+        )
+        badge_lbl.pack(padx=6, pady=1)
+
+        title_text = self.translation.tr('tab_mi_unlock') if is_mi else self.translation.tr('main_title')
+        title_lbl = FooterTitleLabel(
+            footer_frame,
+            outer=self,
+            is_mi=is_mi,
+            text=title_text,
+            font=("Arial", 11),
+            text_color=MaterialColors.get_color('on_surface_variant')
+        )
+        title_lbl.place(relx=0.5, rely=0.5, anchor="center")
+
+        right_box = ctk.CTkFrame(footer_frame, fg_color="transparent")
+        right_box.pack(side="right", padx=(4, 6), pady=4)
+
+        def open_authors(event=None):
+            self.switch_tab("settings")
+            self._show_settings_section("authors")
+
+        dev_btn = ctk.CTkButton(
+            right_box,
+            text="pktloss • New G3n",
+            font=("Arial", 10, "bold"),
+            text_color=MaterialColors.get_color('primary'),
+            fg_color="transparent",
+            hover_color=MaterialColors.get_color('surface_container_highest'),
+            height=24,
+            corner_radius=6,
+            cursor="hand2",
+            command=open_authors
+        )
+        dev_btn.pack(side="right")
+
+        def on_enter(e):
+            footer_frame.configure(fg_color=MaterialColors.get_color('surface_container'))
+        def on_leave(e):
+            footer_frame.configure(fg_color=MaterialColors.get_color('surface_container_low'))
+
+        for w in (footer_frame, left_box, badge_frame, badge_lbl, title_lbl):
+            try:
+                w.configure(cursor="hand2")
+            except Exception:
+                pass
+            w.bind("<Enter>", on_enter, add="+")
+            w.bind("<Leave>", on_leave, add="+")
+            w.bind("<Button-1>", open_authors, add="+")
+
+        for w in (footer_frame, left_box, badge_lbl, title_lbl):
+            FooterToolTip(w, lambda mi=is_mi: self._get_footer_tooltip_text(mi))
+
+        setattr(self, f"{prefix}footer_frame", footer_frame)
+        setattr(self, f"{prefix}footer_badge", badge_frame)
+        setattr(self, f"{prefix}footer_badge_lbl", badge_lbl)
+        setattr(self, f"{prefix}footer_title_lbl", title_lbl)
+        setattr(self, f"{prefix}footer_dev_btn", dev_btn)
+
+        if is_mi:
+            self.mi_desc_label = title_lbl
+        else:
+            self.desc_label = title_lbl
+
+        return footer_frame
+
+    def _update_footer_colors(self):
+        """Обновляет цвета плашек-подвалов при смене темы."""
+        for pfx in ('', 'mi_'):
+            ff = getattr(self, f"{pfx}footer_frame", None)
+            if ff and hasattr(ff, 'winfo_exists') and ff.winfo_exists():
+                ff.configure(
+                    fg_color=MaterialColors.get_color('surface_container_low'),
+                    border_color=MaterialColors.get_color('outline_variant')
+                )
+            fb = getattr(self, f"{pfx}footer_badge", None)
+            if fb and hasattr(fb, 'winfo_exists') and fb.winfo_exists():
+                fb.configure(fg_color=MaterialColors.get_color('primary_container'))
+            fbl = getattr(self, f"{pfx}footer_badge_lbl", None)
+            if fbl and hasattr(fbl, 'winfo_exists') and fbl.winfo_exists():
+                fbl.configure(text_color=MaterialColors.get_color('on_primary_container'))
+            fd = getattr(self, f"{pfx}footer_dev_btn", None)
+            if fd and hasattr(fd, 'winfo_exists') and fd.winfo_exists():
+                fd.configure(
+                    text_color=MaterialColors.get_color('primary'),
+                    hover_color=MaterialColors.get_color('surface_container_highest')
+                )
 
     def _create_unlock_tab(self):
         """Создает вкладку с параметрами подачи заявок"""
         dark_mode = True
         container = self.tab_containers['unlock']
-        container.pack(fill="both", expand=True)
 
-        left_column = ctk.CTkFrame(container, fg_color="transparent", width=460)
-        left_column.pack(side="left", fill="both", expand=True, padx=(0, 10))
+        container.grid_columnconfigure(0, weight=1, uniform='unlock_col')
+        container.grid_columnconfigure(1, weight=1, uniform='unlock_col')
+        container.grid_rowconfigure(0, weight=1)
 
-        right_column = ctk.CTkFrame(container, fg_color="transparent", width=460)
-        right_column.pack(side="right", fill="both", expand=True, padx=(10, 0))
+        left_column = ctk.CTkFrame(container, fg_color="transparent")
+        left_column.grid(row=0, column=0, sticky="nsew", padx=(0, 10), pady=8)
+
+        right_column = ctk.CTkFrame(container, fg_color="transparent")
+        right_column.grid(row=0, column=1, sticky="nsew", padx=(10, 0), pady=8)
         self.unlock_right_column = right_column
 
         self.params_card = MD3Card(left_column, elevation=2)
@@ -912,6 +1596,83 @@ class XiaomiUnlockTool:
 
         card_content = ctk.CTkScrollableFrame(self.params_card, fg_color="transparent")
         card_content.pack(fill="both", expand=True, padx=12, pady=(8, 10))
+
+        # Контейнер для блока часов Пекинского времени (позволяет сворачивать часы в тонкую кнопку в рамку)
+        self.beijing_clock_container = ctk.CTkFrame(card_content, fg_color="transparent")
+        self.beijing_clock_container.pack(fill="x", pady=(0, 10))
+
+        initial_bj_time = self.get_beijing_time().strftime("%H:%M:%S")
+
+        # 1. Тонкая кнопка в рамке (отображается в свернутом виде)
+        self.beijing_collapsed_btn = ctk.CTkButton(
+            self.beijing_clock_container,
+            text=f"🕒 {self.translation.tr('beijing_time_title')}: {initial_bj_time}   ▼ {self.translation.tr('beijing_clock_expand')}",
+            height=32,
+            corner_radius=10,
+            border_width=1,
+            border_color=MaterialColors.get_color('outline_variant'),
+            fg_color=MaterialColors.get_color('surface_container_high'),
+            hover_color=MaterialColors.get_color('surface_container_highest'),
+            text_color=MaterialColors.get_color('primary'),
+            font=("Consolas", 13, "bold"),
+            command=self.toggle_beijing_clock
+        )
+
+        # 2. Развернутая карточка часов (широкая, компактная по высоте, над Режимом Работы)
+        self.beijing_timer_card = ctk.CTkFrame(
+            self.beijing_clock_container,
+            fg_color=MaterialColors.get_color('surface_container_high'),
+            corner_radius=12,
+            border_width=1,
+            border_color=MaterialColors.get_color('outline_variant')
+        )
+
+        beijing_header = ctk.CTkFrame(self.beijing_timer_card, fg_color="transparent")
+        beijing_header.pack(fill="x", padx=12, pady=(6, 0))
+
+        self.beijing_timer_title_label = MD3Label(
+            beijing_header,
+            text=self.translation.tr('beijing_time_title'),
+            typography='label_medium',
+            text_color=MaterialColors.get_color('primary')
+        )
+        self.beijing_timer_title_label.pack(side="left", anchor="w")
+
+        self.beijing_collapse_btn = ctk.CTkButton(
+            beijing_header,
+            text=f"▲ {self.translation.tr('beijing_clock_collapse')}",
+            width=85,
+            height=22,
+            corner_radius=6,
+            border_width=1,
+            border_color=MaterialColors.get_color('outline_variant'),
+            fg_color="transparent",
+            hover_color=MaterialColors.get_color('surface_container_highest'),
+            text_color=MaterialColors.get_color('on_surface_variant'),
+            font=("Segoe UI", 10),
+            command=self.toggle_beijing_clock
+        )
+        self.beijing_collapse_btn.pack(side="right", anchor="e")
+
+        self.beijing_clock_label = ctk.CTkLabel(
+            self.beijing_timer_card,
+            text=initial_bj_time,
+            font=("Consolas", 24, "bold"),
+            text_color="#FFFFFF"
+        )
+        self.beijing_clock_label.pack(anchor="center", pady=(0, 1))
+
+        self.beijing_timer_subtext_label = MD3Label(
+            self.beijing_timer_card,
+            text=self.translation.tr('beijing_submission_hint'),
+            typography='body_small',
+            text_color=MaterialColors.get_color('on_surface_variant'),
+            justify="center"
+        )
+        self.beijing_timer_subtext_label.pack(anchor="center", pady=(0, 6))
+
+        # Применяем сохраненное состояние свернутости/развернутости
+        self._apply_beijing_clock_state()
 
         mode_frame = ctk.CTkFrame(card_content, fg_color="transparent")
         mode_frame.pack(fill="x", pady=(0, 10))
@@ -1089,11 +1850,11 @@ class XiaomiUnlockTool:
         )
         self.login_btn.pack(side="right")
 
-        # Исправлено: placeholder теперь всегда "new_bbs_ServiceToken"
+        # Плейсхолдер с точками на конце
         self.cookie_entry = MD3Entry(
             cookie_frame,
             textvariable=self.cookie_value,
-            placeholder_text="new_bbs_ServiceToken",
+            placeholder_text=self.translation.tr('cookie_placeholder'),
             height=36
         )
         self.cookie_entry.pack(fill="x")
@@ -1107,13 +1868,6 @@ class XiaomiUnlockTool:
             command=self.check_eligibility
         )
         self.check_eligibility_btn.pack(fill="x", pady=(8, 0))
-
-        # Пункт с информацией убран для компактности интерфейса
-        self.info_card = None
-        self.info_label = None
-        self.status_text = None
-        self.time_text = None
-        self.application_status_text = None
 
         button_frame = ctk.CTkFrame(card_content, fg_color="transparent")
         button_frame.pack(fill="x", pady=(0, 6))
@@ -1129,10 +1883,10 @@ class XiaomiUnlockTool:
 
         self.exit_bg = ctk.CTkFrame(
             button_frame,
-            fg_color='#202020',
-            corner_radius=12,
+            fg_color='transparent',
+            corner_radius=20,
             border_width=0,
-            height=44
+            height=40
         )
         self.exit_bg.pack(side="right")
 
@@ -1141,31 +1895,18 @@ class XiaomiUnlockTool:
             text=self.translation.tr('exit'),
             button_type='text',
             size='small',
-            command=self.exit_application
+            height=40,
+            command=self.exit_application,
+            corner_radius=20,
+            fg_color='#202020',
+            hover_color='#383838',
+            text_color='#FFFFFF',
+            border_width=0
         )
-        self.exit_button.pack(fill="both", expand=True, padx=10, pady=4)
+        self.exit_button.pack(fill="both", expand=True, padx=0, pady=0)
 
-        desc_frame = ctk.CTkFrame(card_content, fg_color="transparent")
+        desc_frame = self._create_compact_footer(card_content, is_mi=False)
         desc_frame.pack(fill="x", pady=(10, 0))
-
-        self.desc_label = MD3Label(
-            desc_frame,
-            text=self.translation.tr('desc'),
-            typography='body_small',
-            text_color=MaterialColors.get_color('on_surface_variant'),
-            wraplength=420,
-            justify="left"
-        )
-        self.desc_label.pack(fill="x")
-
-        def on_left_col_configure(event):
-            try:
-                new_wrap = max(260, event.width - 60)
-                if hasattr(self, 'desc_label') and self.desc_label.winfo_exists():
-                    self.desc_label.configure(wraplength=new_wrap)
-            except Exception:
-                pass
-        left_column.bind("<Configure>", on_left_col_configure, add="+")
 
         self.log_card = MD3Card(right_column, elevation=2)
         self.log_card.pack(fill="both", expand=True)
@@ -1198,22 +1939,30 @@ class XiaomiUnlockTool:
 
         self.clear_log_bg = ctk.CTkFrame(
             log_controls,
-            fg_color='#202020',
-            corner_radius=12,
+            fg_color='transparent',
+            corner_radius=16,
             border_width=0,
-            height=36,
-            width=118
+            height=32,
+            width=98
         )
         self.clear_log_bg.pack(side="left")
+        self.clear_log_bg.pack_propagate(False)
 
         self.clear_log_btn = MD3Button(
             self.clear_log_bg,
             text=self.translation.tr('clear_log_btn'),
             button_type='text',
             size='small',
-            command=self.clear_log
+            height=32,
+            command=self.clear_log,
+            corner_radius=16,
+            font=("Arial", 11),
+            fg_color='#202020',
+            hover_color='#383838',
+            text_color='#FFFFFF',
+            border_width=0
         )
-        self.clear_log_btn.pack(fill="both", expand=True, padx=12, pady=4)
+        self.clear_log_btn.pack(fill="both", expand=True, padx=0, pady=0)
 
         log_content = ctk.CTkFrame(self.log_card, fg_color="transparent")
         log_content.pack(fill="both", expand=True, padx=18, pady=(8, 12))
@@ -1249,7 +1998,6 @@ class XiaomiUnlockTool:
     def _create_settings_tab(self):
         """Создает встроенную вкладку настроек и инструкций внутри основного интерфейса."""
         container = self.tab_containers['settings']
-        container.pack(fill="both", expand=True)
 
         sidebar = ctk.CTkFrame(
             container,
@@ -1259,15 +2007,16 @@ class XiaomiUnlockTool:
             border_width=1,
             border_color=MaterialColors.get_color('outline_variant')
         )
-        sidebar.pack(side="left", fill="both", padx=(0, 12), pady=8)
+        sidebar.pack(side="left", fill="both", padx=(0, 10), pady=8)
         sidebar.pack_propagate(False)
 
         content = ctk.CTkFrame(container, fg_color="transparent")
-        content.pack(side="right", fill="both", expand=True)
+        content.pack(side="right", fill="both", expand=True, padx=(10, 0), pady=8)
 
         self.settings_sidebar_buttons = {}
         self.settings_content_area = ctk.CTkFrame(content, fg_color="transparent")
         self.settings_content_area.pack(fill="both", expand=True)
+        self._settings_panels = {}
 
         self.sidebar_title_label = ctk.CTkLabel(
             sidebar,
@@ -1300,9 +2049,29 @@ class XiaomiUnlockTool:
         self.settings_active_section = 'about'
         self._show_settings_section('about')
 
-    def _show_settings_section(self, section_name):
+    def _clear_settings_cache(self):
+        """Очищает кэшированные панели настроек при смене языка или темы оформления."""
+        if hasattr(self, '_settings_panels') and self._settings_panels:
+            for p in list(self._settings_panels.values()):
+                try:
+                    if p.winfo_exists():
+                        p.destroy()
+                except Exception:
+                    pass
+            self._settings_panels.clear()
+
+    def _show_settings_section(self, section_name, animated=True):
+        prev_section = getattr(self, 'settings_active_section', 'about')
         self.settings_active_section = section_name
 
+        if hasattr(self, '_panel_anim_id') and self._panel_anim_id is not None:
+            try:
+                self.root.after_cancel(self._panel_anim_id)
+            except Exception:
+                pass
+            self._panel_anim_id = None
+
+        # Подсветка кнопок бокового меню
         for key, btn in self.settings_sidebar_buttons.items():
             if key == section_name:
                 btn.configure(
@@ -1320,38 +2089,96 @@ class XiaomiUnlockTool:
                     border_color=MaterialColors.get_color('outline')
                 )
 
-        for widget in self.settings_content_area.winfo_children():
+        if not hasattr(self, '_settings_panels'):
+            self._settings_panels = {}
+
+        # Ленивое кэширование: создаем панель только если её ещё нет в кэше
+        new_panel = self._settings_panels.get(section_name)
+        if new_panel is None or not new_panel.winfo_exists():
+            new_panel = MD3Card(
+                self.settings_content_area,
+                fg_color=MaterialColors.get_color('surface_container_low'),
+                corner_radius=16,
+                border_width=1,
+                border_color=MaterialColors.get_color('outline_variant')
+            )
+            if section_name == 'about':
+                self._show_about_section(new_panel)
+            elif section_name == 'general':
+                self._show_general_section(new_panel)
+            elif section_name == 'cookies':
+                self._show_cookies_section(new_panel)
+            elif section_name == 'trouble':
+                self._show_trouble_section(new_panel)
+            elif section_name == 'authors':
+                self._show_authors_section(new_panel)
+            elif section_name == 'settings':
+                self._show_settings_inner_section(new_panel)
+            else:
+                self._show_about_section(new_panel)
+            self._settings_panels[section_name] = new_panel
+
+        # Скрываем остальные панели (через place_forget, без разрушения виджетов!)
+        for name, p in self._settings_panels.items():
+            if name != section_name and p.winfo_exists():
+                try:
+                    p.place_forget()
+                except Exception:
+                    pass
+
+        animations_on = animated and bool(self.settings.get('animations_enabled', True)) and (prev_section != section_name)
+
+        if not animations_on:
+            new_panel.place(x=0, y=0, relwidth=1.0, relheight=1.0, anchor="nw")
+            new_panel.lift()
+            return
+
+        # Направленная вертикальная анимация: сверху вниз или снизу вверх
+        section_order = ['about', 'general', 'cookies', 'trouble', 'authors', 'settings']
+        prev_idx = section_order.index(prev_section) if prev_section in section_order else 0
+        new_idx = section_order.index(section_name) if section_name in section_order else 0
+
+        # Если новый раздел выше старого: движение сверху вниз (-32 -> 0)
+        # Если новый раздел ниже старого: движение снизу вверх (+32 -> 0)
+        start_y = -32 if new_idx < prev_idx else 32
+
+        new_panel.place(x=0, y=start_y, relwidth=1.0, relheight=1.0, anchor="nw")
+        new_panel.lift()
+
+        # Анимация по системному таймеру высокой точности (time.perf_counter)
+        anim_duration = 0.12  # 120 мс
+        anim_start = time.perf_counter()
+
+        def _step():
+            if getattr(self, 'settings_active_section', None) != section_name:
+                return
+            elapsed = time.perf_counter() - anim_start
+            progress = min(1.0, elapsed / anim_duration)
+            factor = 1.0 - (1.0 - progress) ** 3.0
+            cur_y = int(round(start_y * (1.0 - factor)))
             try:
-                widget.destroy()
+                new_panel.place_configure(y=cur_y)
+                if progress < 1.0:
+                    self._panel_anim_id = self.root.after(10, _step)
+                else:
+                    self._finish_panel_transition(new_panel)
             except Exception:
-                pass
+                self._finish_panel_transition(new_panel)
 
-        self.update_button = None
-        self.theme_color_entry = None
-        self.theme_color_preview = None
+        self._panel_anim_id = self.root.after(10, _step)
 
-        if section_name == 'about':
-            self._show_about_section()
-            return
-        elif section_name == 'general':
-            self._show_general_section()
-            return
-        elif section_name == 'cookies':
-            self._show_cookies_section()
-            return
-        elif section_name == 'trouble':
-            self._show_trouble_section()
-            return
-        elif section_name == 'authors':
-            self._show_authors_section()
-            return
-        elif section_name == 'settings':
-            self._show_settings_inner_section()
-            return
+    def _finish_panel_transition(self, new_panel):
+        self._panel_anim_id = None
+        try:
+            if new_panel.winfo_exists():
+                new_panel.place_configure(y=0)
+        except Exception:
+            pass
 
-    def _show_about_section(self):
-        panel = MD3Card(self.settings_content_area, fg_color=MaterialColors.get_color('surface_container_low'), corner_radius=16, border_width=1, border_color=MaterialColors.get_color('outline_variant'))
-        panel.pack(fill="both", expand=True, padx=8, pady=8)
+    def _show_about_section(self, panel=None):
+        if panel is None:
+            self._show_settings_section('about')
+            return
         scroll = ctk.CTkScrollableFrame(panel, fg_color="transparent")
         scroll.pack(fill="both", expand=True, padx=12, pady=12)
         build_about_section(
@@ -1360,38 +2187,66 @@ class XiaomiUnlockTool:
             version=CURRENT_VERSION,
             primary_color=MaterialColors.get_color('primary')
         )
-        self._animate_settings_panel(panel)
 
-    def _show_general_section(self):
-        panel = MD3Card(self.settings_content_area, fg_color=MaterialColors.get_color('surface_container_low'), corner_radius=16, border_width=1, border_color=MaterialColors.get_color('outline_variant'))
-        panel.pack(fill="both", expand=True, padx=8, pady=8)
+    def _show_general_section(self, panel=None):
+        if panel is None:
+            self._show_settings_section('general')
+            return
         scroll = ctk.CTkScrollableFrame(panel, fg_color="transparent")
         scroll.pack(fill="both", expand=True, padx=12, pady=12)
         build_general_section(scroll, self.translation.language, primary_color=MaterialColors.get_color('primary'))
-        self._animate_settings_panel(panel)
 
-    def _show_cookies_section(self):
-        panel = MD3Card(self.settings_content_area, fg_color=MaterialColors.get_color('surface_container_low'), corner_radius=16, border_width=1, border_color=MaterialColors.get_color('outline_variant'))
-        panel.pack(fill="both", expand=True, padx=8, pady=8)
+    def _show_cookies_section(self, panel=None):
+        if panel is None:
+            self._show_settings_section('cookies')
+            return
         scroll = ctk.CTkScrollableFrame(panel, fg_color="transparent")
         scroll.pack(fill="both", expand=True, padx=12, pady=12)
         build_cookies_section(scroll, self.translation.language, primary_color=MaterialColors.get_color('primary'))
-        self._animate_settings_panel(panel)
 
-    def _show_trouble_section(self):
-        panel = MD3Card(self.settings_content_area, fg_color=MaterialColors.get_color('surface_container_low'), corner_radius=16, border_width=1, border_color=MaterialColors.get_color('outline_variant'))
-        panel.pack(fill="both", expand=True, padx=8, pady=8)
+    def _show_trouble_section(self, panel=None):
+        if panel is None:
+            self._show_settings_section('trouble')
+            return
         scroll = ctk.CTkScrollableFrame(panel, fg_color="transparent")
         scroll.pack(fill="both", expand=True, padx=12, pady=12)
         build_trouble_section(scroll, self.translation.language, self.open_telegram, primary_color=MaterialColors.get_color('primary'))
-        self._animate_settings_panel(panel)
 
-    def _show_settings_inner_section(self):
-        panel = MD3Card(self.settings_content_area, fg_color=MaterialColors.get_color('surface_container_low'), corner_radius=16, border_width=1, border_color=MaterialColors.get_color('outline_variant'))
-        panel.pack(fill="both", expand=True, padx=8, pady=8)
+    def _show_settings_inner_section(self, panel=None):
+        if panel is None:
+            self._show_settings_section('settings')
+            return
 
+        # 1. Фиксированная нижняя панель: версия и кнопка проверки обновлений справа внизу
+        bottom_bar = ctk.CTkFrame(panel, fg_color="transparent")
+        bottom_bar.pack(side="bottom", fill="x", padx=16, pady=(6, 12))
+
+        bottom_sep = ctk.CTkFrame(panel, fg_color=MaterialColors.get_color('outline_variant'), height=1)
+        bottom_sep.pack(side="bottom", fill="x", padx=16, pady=(0, 6))
+
+        update_block = ctk.CTkFrame(bottom_bar, fg_color="transparent")
+        update_block.pack(side="right", anchor="e")
+
+        self.version_label = MD3Label(
+            update_block,
+            text=self.translation.tr('current_version').format(CURRENT_VERSION),
+            typography='label_medium'
+        )
+        self.version_label.pack(side="left", padx=(0, 12))
+
+        self.update_button = MD3Button(
+            update_block,
+            text=self.translation.tr('check_updates'),
+            button_type='outlined',
+            size='small',
+            height=30,
+            command=self.check_updates
+        )
+        self.update_button.pack(side="left")
+
+        # 2. Скроллируемая область для параметров настроек (занимает всё пространство выше нижней панели)
         scroll = ctk.CTkScrollableFrame(panel, fg_color="transparent")
-        scroll.pack(fill="both", expand=True, padx=8, pady=8)
+        scroll.pack(side="top", fill="both", expand=True, padx=8, pady=(8, 0))
 
         # Заголовок
         ctk.CTkLabel(
@@ -1406,7 +2261,7 @@ class XiaomiUnlockTool:
         MD3Label(language_frame, text=self.translation.tr('language_label'), typography='label_large').pack(anchor="w")
         ctk.CTkOptionMenu(
             language_frame,
-            values=['ru', 'en', 'id', 'es', 'zh', 'pt'],
+            values=['ru', 'en', 'uk', 'id', 'es', 'zh', 'pt'],
             variable=self.language_var,
             width=200,
             height=40,
@@ -1491,46 +2346,19 @@ class XiaomiUnlockTool:
         anim_row = ctk.CTkFrame(check_frame, fg_color="transparent")
         anim_row.pack(anchor="w", fill="x", pady=8)
 
-        ctk.CTkCheckBox(
+        self.animations_checkbox = ctk.CTkCheckBox(
             anim_row,
             text=self.translation.tr('animations_checkbox'),
             variable=self.animations_enabled_var,
-            state="disabled",
+            command=self.toggle_animations,
             **checkbox_style
-        ).pack(side="left")
-
-        ctk.CTkLabel(
-            anim_row,
-            text=f"({self.translation.tr('animations_coming_soon')})",
-            font=("Arial", 12),
-            text_color=MaterialColors.get_color('on_surface_variant')
-        ).pack(side="left", padx=(10, 0))
-
-        separator2 = ctk.CTkFrame(scroll, fg_color=MaterialColors.get_color('outline_variant'), height=1)
-        separator2.pack(fill="x", padx=10, pady=(10, 10))
-
-        version_frame = ctk.CTkFrame(scroll, fg_color="transparent")
-        version_frame.pack(fill="x", padx=10, pady=10)
-        MD3Label(version_frame, text=self.translation.tr('current_version').format(CURRENT_VERSION), typography='label_large').pack(anchor="w")
-        self.update_button = MD3Button(
-            version_frame,
-            text=self.translation.tr('check_updates'),
-            button_type='outlined',
-            size='small',
-            command=self.check_updates
         )
-        self.update_button.pack(anchor="w", pady=(8, 0))
-        self._animate_settings_panel(panel)
+        self.animations_checkbox.pack(side="left")
 
-    def _show_authors_section(self):
-        panel = MD3Card(
-            self.settings_content_area,
-            fg_color=MaterialColors.get_color('surface_container_low'),
-            corner_radius=16,
-            border_width=1,
-            border_color=MaterialColors.get_color('outline_variant')
-        )
-        panel.pack(fill="both", expand=True, padx=8, pady=8)
+    def _show_authors_section(self, panel=None):
+        if panel is None:
+            self._show_settings_section('authors')
+            return
 
         scroll = ctk.CTkScrollableFrame(panel, fg_color="transparent")
         scroll.pack(fill="both", expand=True, padx=12, pady=12)
@@ -1777,17 +2605,12 @@ class XiaomiUnlockTool:
         crypto_entry.configure(state="readonly")
         crypto_entry.pack(fill="x", padx=14, pady=(0, 10))
 
-        self._animate_settings_panel(panel)
-
     def choose_theme_color(self):
         """Открывает встроенный диалог выбора цвета."""
         try:
             initial = MaterialColors.get_color('primary')
             if CustomColorPickerDialog is not None:
                 def _on_accepted(chosen_color):
-                    if hasattr(self, 'theme_color_entry') and self.theme_color_entry is not None and self.theme_color_entry.winfo_exists():
-                        self.theme_color_entry.delete(0, "end")
-                        self.theme_color_entry.insert(0, chosen_color)
                     self._set_custom_theme_color(chosen_color)
                     if hasattr(self, 'theme_color_preview') and self.theme_color_preview is not None and self.theme_color_preview.winfo_exists():
                         self.theme_color_preview.configure(fg_color=chosen_color)
@@ -1805,46 +2628,11 @@ class XiaomiUnlockTool:
                 )
                 if result and result[1]:
                     chosen = result[1].upper()
-                    if hasattr(self, 'theme_color_entry') and self.theme_color_entry is not None and self.theme_color_entry.winfo_exists():
-                        self.theme_color_entry.delete(0, "end")
-                        self.theme_color_entry.insert(0, chosen)
                     self._set_custom_theme_color(chosen)
                     if hasattr(self, 'theme_color_preview') and self.theme_color_preview is not None and self.theme_color_preview.winfo_exists():
                         self.theme_color_preview.configure(fg_color=chosen)
         except Exception as e:
             print(f"Ошибка выбора цвета: {e}")
-
-    def apply_custom_theme_color(self):
-        """Применяет цвет темы из HEX или RGB (R,G,B)."""
-        raw = self.theme_color_entry.get().strip()
-        if not raw:
-            return
-
-        color = None
-        if re.fullmatch(r'#?[0-9a-fA-F]{6}', raw):
-            color = '#' + raw.lstrip('#').upper()
-        else:
-            rgb_match = re.fullmatch(
-                r'\s*(\d{1,3})\s*[,;]\s*(\d{1,3})\s*[,;]\s*(\d{1,3})\s*',
-                raw
-            )
-            if rgb_match:
-                rgb = tuple(int(x) for x in rgb_match.groups())
-                if all(0 <= x <= 255 for x in rgb):
-                    color = '#{:02X}{:02X}{:02X}'.format(*rgb)
-
-        if not color:
-            messagebox.showerror(
-                self.translation.tr('theme_color_error_title'),
-                self.translation.tr('theme_color_error')
-            )
-            return
-
-        self._set_custom_theme_color(color)
-        self.theme_color_entry.delete(0, "end")
-        self.theme_color_entry.insert(0, color)
-        if hasattr(self, 'theme_color_preview'):
-            self.theme_color_preview.configure(fg_color=color)
 
     def _load_custom_theme_palette(self, color):
         """Загружает сохраненную палитру до создания виджетов."""
@@ -1928,17 +2716,10 @@ class XiaomiUnlockTool:
 
         self.update_md3_colors()
         try:
-            self._show_settings_section(self.settings_active_section)
+            self._clear_settings_cache()
+            self._show_settings_section(self.settings_active_section, animated=False)
         except Exception:
             pass
-
-    def reset_custom_theme_color(self):
-        self._set_custom_theme_color('#D0BCFF')
-        if hasattr(self, 'theme_color_entry'):
-            self.theme_color_entry.delete(0, "end")
-            self.theme_color_entry.insert(0, '#D0BCFF')
-        if hasattr(self, 'theme_color_preview'):
-            self.theme_color_preview.configure(fg_color='#D0BCFF')
 
     def toggle_animations(self):
         try:
@@ -1965,7 +2746,7 @@ class XiaomiUnlockTool:
 
         def worker():
             try:
-                latest_version, message = UpdateChecker.check_for_updates()
+                latest_version, message = UpdateChecker.check_for_updates(lang=self.translation.language)
             except Exception as e:
                 latest_version, message = None, f"update_error: {e}"
 
@@ -1987,10 +2768,11 @@ class XiaomiUnlockTool:
                         if answer:
                             autoupdate_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "res", "autoupdate.py")
                             if os.path.exists(autoupdate_script):
-                                subprocess.Popen([sys.executable, autoupdate_script, "--force"])
+                                subprocess.Popen([sys.executable, autoupdate_script, "--force", f"--lang={self.translation.language}"])
                                 self.root.destroy()
                                 return
-                            webbrowser.open("https://miunlock.su/download/stable/pc/Latest_Release.zip", new=2)
+                            download_url = get_update_download_url(self.translation.language)
+                            webbrowser.open(download_url, new=2)
                         return
 
                     if message == "up_to_date":
@@ -2013,27 +2795,27 @@ class XiaomiUnlockTool:
 
             self.root.after(0, finish)
 
-        threading.Thread(target=worker, daemon=True).start()
-
-    def open_instructions(self):
-        self.switch_tab("settings")
-
-    def on_instructions_close(self, window=None):
-        return
+        if hasattr(self, 'thread_coordinator'):
+            self.thread_coordinator.submit_bg_task(worker)
+        else:
+            threading.Thread(target=worker, daemon=True).start()
 
     def _create_mi_unlock_tab(self):
         """Создает вкладку с полноценным Mi Unlock функционалом с интерфейсом как у Подачи заявок"""
         trans = self.translation
         dark_mode = True
         container = self.tab_containers['mi_unlock']
-        container.pack(fill="both", expand=True)
+
+        container.grid_columnconfigure(0, weight=1, uniform='mi_col')
+        container.grid_columnconfigure(1, weight=1, uniform='mi_col')
+        container.grid_rowconfigure(0, weight=1)
 
         # Двухколонный layout как в unlock tab
-        left_column = ctk.CTkFrame(container, fg_color="transparent", width=460)
-        left_column.pack(side="left", fill="both", expand=True, padx=(0, 10))
+        left_column = ctk.CTkFrame(container, fg_color="transparent")
+        left_column.grid(row=0, column=0, sticky="nsew", padx=(0, 10), pady=8)
 
-        right_column = ctk.CTkFrame(container, fg_color="transparent", width=460)
-        right_column.pack(side="right", fill="both", expand=True, padx=(10, 0))
+        right_column = ctk.CTkFrame(container, fg_color="transparent")
+        right_column.grid(row=0, column=1, sticky="nsew", padx=(10, 0), pady=8)
 
         # ===== ЛЕВАЯ КОЛОННА =====
         mi_card = MD3Card(left_column, elevation=2)
@@ -2065,8 +2847,6 @@ class XiaomiUnlockTool:
         card_content = ctk.CTkScrollableFrame(mi_card, fg_color="transparent")
         card_content.pack(fill="both", expand=True, padx=12, pady=(8, 10))
 
-        # Пункт с информацией убран для компактности интерфейса
-        self.mi_info_label = None
         process_state = {'process': None, 'closed': False, 'status_label': None}
         self.mi_status_label_var = ctk.StringVar(value=trans.tr('mi_unlock_checking_python'))
         status_label_var = self.mi_status_label_var
@@ -2081,8 +2861,10 @@ class XiaomiUnlockTool:
 
         def start_mi_unlock():
             start_mi_btn.configure(state="disabled")
-            self.mi_close_btn.configure(state="disabled")
-            threading.Thread(target=install_and_run_miunlock, daemon=True).start()
+            if hasattr(self, 'thread_coordinator'):
+                self.thread_coordinator.submit_bg_task(install_and_run_miunlock)
+            else:
+                threading.Thread(target=install_and_run_miunlock, daemon=True).start()
 
         def close_mi_unlock():
             """Закрывает вкладку Mi Unlock и завершает процесс"""
@@ -2112,10 +2894,10 @@ class XiaomiUnlockTool:
 
         exit_bg = ctk.CTkFrame(
             button_frame,
-            fg_color='#202020',
-            corner_radius=12,
+            fg_color='transparent',
+            corner_radius=20,
             border_width=0,
-            height=44
+            height=40
         )
         exit_bg.pack(side="right")
 
@@ -2124,9 +2906,15 @@ class XiaomiUnlockTool:
             text=trans.tr('exit'),
             button_type='text',
             size='small',
-            command=close_mi_unlock
+            height=40,
+            command=close_mi_unlock,
+            corner_radius=20,
+            fg_color='#202020',
+            hover_color='#383838',
+            text_color='#FFFFFF',
+            border_width=0
         )
-        self.mi_close_btn.pack(fill="both", expand=True, padx=10, pady=4)
+        self.mi_close_btn.pack(fill="both", expand=True, padx=0, pady=0)
 
         self.mi_drivers_btn = MD3Button(
             card_content,
@@ -2169,13 +2957,14 @@ class XiaomiUnlockTool:
 
         clear_log_bg = ctk.CTkFrame(
             log_controls,
-            fg_color='#202020',
-            corner_radius=12,
+            fg_color='transparent',
+            corner_radius=16,
             border_width=0,
-            height=36,
-            width=118
+            height=32,
+            width=98
         )
         clear_log_bg.pack(side="left")
+        clear_log_bg.pack_propagate(False)
 
         def clear_log_content():
             output_text.configure(state="normal")
@@ -2187,9 +2976,16 @@ class XiaomiUnlockTool:
             text=trans.tr('clear_log_btn'),
             button_type='text',
             size='small',
-            command=clear_log_content
+            height=32,
+            command=clear_log_content,
+            corner_radius=16,
+            font=("Arial", 11),
+            fg_color='#202020',
+            hover_color='#383838',
+            text_color='#FFFFFF',
+            border_width=0
         )
-        self.mi_clear_log_btn.pack(fill="both", expand=True, padx=12, pady=4)
+        self.mi_clear_log_btn.pack(fill="both", expand=True, padx=0, pady=0)
 
         log_content = ctk.CTkFrame(log_card, fg_color="transparent")
         log_content.pack(fill="both", expand=True, padx=18, pady=(8, 12))
@@ -2261,18 +3057,8 @@ class XiaomiUnlockTool:
 
         input_entry.bind("<Return>", handle_input_enter)
 
-        mi_desc_frame = ctk.CTkFrame(left_column, fg_color="transparent")
+        mi_desc_frame = self._create_compact_footer(card_content, is_mi=True)
         mi_desc_frame.pack(fill="x", pady=(10, 0))
-
-        self.mi_desc_label = MD3Label(
-            mi_desc_frame,
-            text=trans.tr('mi_unlock_desc'),
-            typography='body_small',
-            text_color=MaterialColors.get_color('on_surface_variant'),
-            wraplength=450,
-            justify="left"
-        )
-        self.mi_desc_label.pack()
 
         # ===== ФУНКЦИИ =====
         def log_message(message, color="white"):
@@ -2351,6 +3137,15 @@ class XiaomiUnlockTool:
             return None, None
 
         def install_and_run_miunlock():
+            def restore_buttons():
+                try:
+                    if hasattr(self, 'start_mi_btn') and self.start_mi_btn.winfo_exists():
+                        self.start_mi_btn.configure(state="normal")
+                    if hasattr(self, 'mi_close_btn') and self.mi_close_btn.winfo_exists():
+                        self.mi_close_btn.configure(state="normal")
+                except Exception:
+                    pass
+
             try:
                 safe_update_status('mi_unlock_checking_python', "orange")
                 python_cmd, version = find_python()
@@ -2477,14 +3272,13 @@ class XiaomiUnlockTool:
                     except Exception as e:
                         if "closed" not in str(e).lower() and not process_state['closed']:
                             try:
+                                err_str = str(e)
                                 container.after(0,
-                                                lambda: log_message(trans.tr('mi_unlock_read_error').format(e), "red"))
+                                                lambda err=err_str: log_message(trans.tr('mi_unlock_read_error').format(err), "red"))
                             except:
                                 pass
 
-                read_thread = threading.Thread(target=read_output, daemon=True)
-                read_thread.start()
-
+                read_output()
                 process_state['process'].wait()
 
                 if not process_state['closed']:
@@ -2505,127 +3299,130 @@ class XiaomiUnlockTool:
             except Exception as e:
                 if not process_state['closed']:
                     try:
-                        container.after(0, lambda: update_status(trans.tr('mi_unlock_error').format(str(e)), "red"))
-                        container.after(0, lambda: log_message(trans.tr('mi_unlock_critical_error').format(e), "red"))
+                        err_str = str(e)
+                        container.after(0, lambda err=err_str: update_status(trans.tr('mi_unlock_error').format(err), "red"))
+                        container.after(0, lambda err=err_str: log_message(trans.tr('mi_unlock_critical_error').format(err), "red"))
                     except:
                         pass
-
-    def _animate_settings_panel(self, panel, step=0):
-        """Плавная анимация появления подраздела настроек снизу вверх с кубическим замедлением."""
-        try:
-            if not panel.winfo_exists():
-                return
-        except Exception:
-            return
-
-        if not self.settings.get('animations_enabled', True):
-            try:
-                panel.pack(fill="both", expand=True, padx=8, pady=8)
-            except Exception:
-                pass
-            return
-
-        steps = 10
-        start_y = 20
-
-        if step == 0:
-            try:
-                panel.pack_forget()
-                panel.place(x=8, y=8 + start_y, relwidth=1, width=-16, relheight=1, height=-16, anchor="nw")
-                panel.after(16, lambda: self._animate_settings_panel(panel, 1))
-            except Exception:
-                panel.pack(fill="both", expand=True, padx=8, pady=8)
-        elif step < steps:
-            t = (step + 1) / steps
-            eased = 1.0 - (1.0 - t) ** 3
-            current_y = int(start_y * (1.0 - eased))
-            try:
-                panel.place_configure(y=8 + current_y)
-                panel.after(16, lambda: self._animate_settings_panel(panel, step + 1))
-            except Exception:
-                panel.pack(fill="both", expand=True, padx=8, pady=8)
-        else:
-            try:
-                panel.place_forget()
-                panel.pack(fill="both", expand=True, padx=8, pady=8)
-            except Exception:
-                pass
-
-    def switch_tab(self, tab_name, step=0, direction=1):
-        """Переключает между вкладками с плавной направленной анимацией и кубическим сглаживанием."""
-        tab_order = ['settings', 'unlock', 'mi_unlock']
-        prev_tab = getattr(self, 'current_tab', None)
-
-        if step == 0:
-            prev_idx = tab_order.index(prev_tab) if prev_tab in tab_order else 0
-            new_idx = tab_order.index(tab_name) if tab_name in tab_order else 0
-            direction = 1 if new_idx >= prev_idx else -1
-
-            self.current_tab = tab_name
-            for name, container in self.tab_containers.items():
-                if name != tab_name:
-                    container.place_forget()
-                    container.pack_forget()
-
-            if tab_name in self.tab_containers:
-                container = self.tab_containers[tab_name]
-                if self.settings.get('animations_enabled', True) and prev_tab is not None:
-                    steps = 10
-                    start_x = 24 * direction
-                    try:
-                        container.place(x=start_x, y=0, relwidth=1, relheight=1, width=-abs(start_x), anchor="nw")
-                        container.after(16, lambda: self.switch_tab(tab_name, 1, direction))
-                    except Exception:
-                        container.pack(fill="both", expand=True)
-                else:
-                    container.pack(fill="both", expand=True)
-        elif step < 10:
-            if self.current_tab != tab_name:
-                return
-            if tab_name in self.tab_containers:
-                container = self.tab_containers[tab_name]
-                t = (step + 1) / 10
-                eased = 1.0 - (1.0 - t) ** 3
-                current_x = int((24 * direction) * (1.0 - eased))
+            finally:
                 try:
-                    container.place_configure(x=current_x, width=-abs(current_x))
-                    container.after(16, lambda: self.switch_tab(tab_name, step + 1, direction))
-                except Exception:
-                    container.pack(fill="both", expand=True)
-        else:
-            if self.current_tab != tab_name:
-                return
-            if tab_name in self.tab_containers:
-                container = self.tab_containers[tab_name]
-                try:
-                    container.place_forget()
-                    container.pack(fill="both", expand=True)
+                    container.after(0, restore_buttons)
                 except Exception:
                     pass
 
-        if self.current_tab != tab_name:
+    def _create_hyperos1_bypass_tab(self):
+        """Создает вкладку-заглушку HyperOS 1 Bypass"""
+        dark_mode = True
+        container = self.tab_containers['hyperos1_bypass']
+        container.grid_columnconfigure(0, weight=1)
+        container.grid_rowconfigure(0, weight=1)
+
+        bypass_card = MD3Card(container, elevation=2)
+        bypass_card.pack(fill="both", expand=True, padx=4, pady=8)
+        bypass_card.configure(corner_radius=18)
+        self.bypass_card = bypass_card
+
+        card_header = ctk.CTkFrame(bypass_card, fg_color="transparent", height=46)
+        card_header.pack(fill="x", padx=18, pady=(12, 0))
+        card_header.pack_propagate(False)
+
+        header_label_bg = ctk.CTkFrame(
+            card_header,
+            fg_color='#202020',
+            corner_radius=12,
+            border_width=0,
+            height=36
+        )
+        header_label_bg.pack(side="left")
+
+        self.bypass_header_label = MD3Label(
+            header_label_bg,
+            text=f"⚡ {self.translation.tr('tab_hyperos1_bypass')}",
+            typography='title_large',
+            text_color='#FFFFFF'
+        )
+        self.bypass_header_label.pack(side="left", padx=12, pady=2)
+
+        content_box = ctk.CTkFrame(bypass_card, fg_color="transparent")
+        content_box.pack(expand=True, fill="both", padx=24, pady=24)
+
+        center_panel = ctk.CTkFrame(
+            content_box,
+            fg_color=MaterialColors.get_color('surface_container_low'),
+            corner_radius=18,
+            border_width=1,
+            border_color=MaterialColors.get_color('outline_variant')
+        )
+        center_panel.pack(anchor="center", expand=True, padx=20, pady=20)
+        self.bypass_center_panel = center_panel
+
+        icon_lbl = ctk.CTkLabel(
+            center_panel,
+            text="⚡",
+            font=("Segoe UI", 52),
+            text_color=MaterialColors.get_color('primary')
+        )
+        icon_lbl.pack(pady=(28, 6), padx=40)
+        self.bypass_icon_lbl = icon_lbl
+
+        self.bypass_title_label = MD3Label(
+            center_panel,
+            text=self.translation.tr('hyperos1_bypass_title'),
+            typography='headline_medium',
+            text_color=MaterialColors.get_color('on_surface')
+        )
+        self.bypass_title_label.pack(pady=(0, 8), padx=40)
+
+        self.bypass_desc_label = MD3Label(
+            center_panel,
+            text=self.translation.tr('hyperos1_bypass_desc'),
+            typography='body_large',
+            text_color=MaterialColors.get_color('on_surface_variant'),
+            justify="center"
+        )
+        self.bypass_desc_label.pack(pady=(0, 24), padx=40)
+
+        self.bypass_return_btn = MD3Button(
+            center_panel,
+            text=self.translation.tr('hyperos1_bypass_return_btn'),
+            button_type='filled',
+            size='medium',
+            height=38,
+            command=lambda: self.switch_tab("unlock")
+        )
+        self.bypass_return_btn.pack(pady=(0, 28), padx=40)
+
+    def switch_tab(self, tab_name, *args, **kwargs):
+        """Переключает между вкладками с направленной Material 3 анимацией скольжения."""
+        prev_tab = getattr(self, 'current_tab', None)
+        if prev_tab == tab_name:
+            return
+        if tab_name not in self.tab_containers:
             return
 
-        # Обновляем стили кнопок навигации
-        dark_mode = True
+        # Отменяем текущую анимацию, если пользователь переключает вкладки очень быстро
+        if hasattr(self, '_tab_anim_id') and self._tab_anim_id is not None:
+            try:
+                self.root.after_cancel(self._tab_anim_id)
+            except Exception:
+                pass
+            self._tab_anim_id = None
+
+        tab_order = ['settings', 'unlock', 'hyperos1_bypass', 'mi_unlock']
+        prev_idx = tab_order.index(prev_tab) if prev_tab in tab_order else 0
+        new_idx = tab_order.index(tab_name) if tab_name in tab_order else 0
+
+        # Анимация по сторонам:
+        # Если вкладка находится левее (например, с Mi Unlock на Unlock или Settings):
+        # анимация справа налево (start_x = +42 -> 0)
+        # Если вкладка находится правее (например, с Settings на Unlock):
+        # анимация слева направо (start_x = -42 -> 0)
+        start_x = 42 if new_idx < prev_idx else -42
+        self.current_tab = tab_name
+
+        # Мгновенно обновляем подсветку кнопок для максимальной отзывчивости
         for btn_name, btn in self.tab_buttons.items():
-            if btn_name == "settings":
-                if btn_name == tab_name:
-                    btn.configure(
-                        fg_color=MaterialColors.get_color('primary'),
-                        hover_color=MaterialColors.get_color('primary_container'),
-                        text_color=MaterialColors.get_color('on_primary'),
-                        border_width=0
-                    )
-                else:
-                    btn.configure(
-                        fg_color='transparent',
-                        hover_color=MaterialColors.get_color('surface_container_high'),
-                        text_color=MaterialColors.get_color('primary'),
-                        border_width=1,
-                        border_color=MaterialColors.get_color('outline')
-                    )
-            elif btn_name == tab_name:
+            if btn_name == tab_name:
                 btn.configure(
                     fg_color=MaterialColors.get_color('primary'),
                     hover_color=MaterialColors.get_color('primary_container'),
@@ -2641,43 +3438,123 @@ class XiaomiUnlockTool:
                     border_color=MaterialColors.get_color('outline')
                 )
 
+        new_container = self.tab_containers[tab_name]
+        animations_on = bool(self.settings.get('animations_enabled', True)) and (prev_tab is not None)
+
+        # Скрываем все остальные вкладки СРАЗУ, чтобы под анимацией было чистое пустое поле без наложения
+        for name, c in self.tab_containers.items():
+            if name != tab_name:
+                try:
+                    c.place_forget()
+                except Exception:
+                    pass
+
+        if not animations_on:
+            new_container.place(x=0, y=0, relwidth=1.0, relheight=1.0, anchor="nw")
+            new_container.lift()
+            return
+
+        # Плавное появление над пустым полем без наложения на старую страницу
+        new_container.place(x=start_x, y=0, relwidth=1.0, relheight=1.0, anchor="nw")
+        new_container.lift()
+
+        # Анимация по системному таймеру высокой точности (time.perf_counter)
+        anim_duration = 0.12  # 120 мс фиксированная длительность
+        anim_start = time.perf_counter()
+
+        def _step():
+            if getattr(self, 'current_tab', None) != tab_name:
+                return
+            elapsed = time.perf_counter() - anim_start
+            progress = min(1.0, elapsed / anim_duration)
+            factor = 1.0 - (1.0 - progress) ** 3.0  # Плавная деселерация
+            cur_x = int(round(start_x * (1.0 - factor)))
+            try:
+                new_container.place_configure(x=cur_x)
+                if progress < 1.0:
+                    self._tab_anim_id = self.root.after(10, _step)
+                else:
+                    self._finish_tab_transition(new_container, tab_name)
+            except Exception:
+                self._finish_tab_transition(new_container, tab_name)
+
+        self._tab_anim_id = self.root.after(10, _step)
+
+    def _finish_tab_transition(self, new_container, tab_name):
+        self._tab_anim_id = None
+        if getattr(self, 'current_tab', None) != tab_name:
+            return
+        try:
+            if new_container.winfo_exists():
+                new_container.place_configure(x=0)
+        except Exception:
+            pass
+        for name, c in self.tab_containers.items():
+            if name != tab_name:
+                try:
+                    c.place_forget()
+                except Exception:
+                    pass
+
     def _animate_in_card(self, widget, step=0):
-        """Плавное появление карточки в правой колонке с кубическим замедлением."""
+        """Плавное появление карточки в правой колонке с мягким скольжением вверх."""
         try:
             if not widget.winfo_exists():
                 return
         except Exception:
             return
 
+        if hasattr(self, '_card_anim_id') and self._card_anim_id is not None:
+            try:
+                self.root.after_cancel(self._card_anim_id)
+            except Exception:
+                pass
+            self._card_anim_id = None
+
         if not self.settings.get('animations_enabled', True):
-            widget.pack(fill="both", expand=True)
-            return
-
-        steps = 10
-        start_y = 18
-
-        if step == 0:
-            try:
-                widget.pack_forget()
-                widget.place(x=0, y=start_y, relwidth=1, relheight=1, anchor="nw")
-                widget.after(16, lambda: self._animate_in_card(widget, 1))
-            except Exception:
-                widget.pack(fill="both", expand=True)
-        elif step < steps:
-            t = (step + 1) / steps
-            eased = 1.0 - (1.0 - t) ** 3
-            current_y = int(start_y * (1.0 - eased))
-            try:
-                widget.place_configure(y=current_y)
-                widget.after(16, lambda: self._animate_in_card(widget, step + 1))
-            except Exception:
-                widget.pack(fill="both", expand=True)
-        else:
             try:
                 widget.place_forget()
                 widget.pack(fill="both", expand=True)
             except Exception:
                 pass
+            return
+
+        start_y = 16
+        anim_duration = 0.14  # 140 мс
+        anim_start = time.perf_counter()
+
+        try:
+            widget.pack_forget()
+            widget.place(x=0, y=start_y, relwidth=1.0, relheight=1.0, anchor="nw")
+        except Exception:
+            try:
+                widget.pack(fill="both", expand=True)
+            except Exception:
+                pass
+            return
+
+        def _step():
+            elapsed = time.perf_counter() - anim_start
+            progress = min(1.0, elapsed / anim_duration)
+            factor = 1.0 - (1.0 - progress) ** 3.0
+            current_y = int(round(start_y * (1.0 - factor)))
+            try:
+                widget.place_configure(y=current_y)
+                if progress < 1.0:
+                    self._card_anim_id = self.root.after(10, _step)
+                else:
+                    self._card_anim_id = None
+                    widget.place_forget()
+                    widget.pack(fill="both", expand=True)
+            except Exception:
+                try:
+                    widget.place_forget()
+                    widget.pack(fill="both", expand=True)
+                except Exception:
+                    pass
+                self._card_anim_id = None
+
+        self._card_anim_id = self.root.after(10, _step)
 
     def show_login_panel(self):
         """Отображает панель авторизации в правой колонке вместо лога с анимацией."""
@@ -2863,19 +3740,15 @@ class XiaomiUnlockTool:
                 except Exception:
                     pass
 
-        prof_name = prof_info['name_ru'] if self.translation.language == 'ru' else prof_info['name_en']
+        if self.translation.language == 'ru':
+            prof_name = prof_info.get('name_ru', prof_info['name_en'])
+        elif self.translation.language == 'uk':
+            prof_name = prof_info.get('name_uk', prof_info['name_en'])
+        else:
+            prof_name = prof_info['name_en']
         timings_str = ", ".join(f"{t:.3f}s" for t in self.selected_timings)
         self.log_message(f"[{self.translation.tr('profiles_title')}] {prof_name}: {timings_str}", color="blue")
         self.save_settings()
-
-    def sync_profile_with_region(self, region):
-        """Синхронизирует профиль с указанным регионом."""
-        target_prof = 'europe'
-        if region == 'Asia':
-            target_prof = 'asia'
-        elif region in ('America', 'USA', 'Africa'):
-            target_prof = 'usa_africa'
-        self.set_timing_profile(target_prof)
 
     def open_timings_dialog(self):
         try:
@@ -2890,8 +3763,9 @@ class XiaomiUnlockTool:
             messagebox.showerror(self.translation.tr('error_title'), self.translation.tr('cookie_error'))
             return
 
-        if getattr(self, '_eligibility_thread', None) and self._eligibility_thread.is_alive():
+        if getattr(self, '_checking_eligibility', False):
             return
+        self._checking_eligibility = True
 
         self.log_message(self.translation.tr('checking_eligibility'), color="blue")
         if hasattr(self, 'check_eligibility_btn') and self.check_eligibility_btn is not None:
@@ -2904,11 +3778,15 @@ class XiaomiUnlockTool:
             except Exception as e:
                 self.log_message(f"Error checking eligibility: {e}", color="red")
             finally:
+                self._checking_eligibility = False
                 if hasattr(self, 'check_eligibility_btn') and self.check_eligibility_btn is not None:
                     self.root.after(0, lambda: self.check_eligibility_btn.configure(state="normal"))
 
-        self._eligibility_thread = threading.Thread(target=worker, daemon=True)
-        self._eligibility_thread.start()
+        if hasattr(self, 'thread_coordinator'):
+            self.thread_coordinator.submit_bg_task(worker)
+        else:
+            self._eligibility_thread = threading.Thread(target=worker, daemon=True)
+            self._eligibility_thread.start()
 
     def clear_log(self):
         self.log_text.configure(state="normal")
@@ -2934,12 +3812,6 @@ class XiaomiUnlockTool:
                 self.ping_var.set(self.translation.tr('ping'))
                 self.desc_label.configure(text=self.translation.tr('desc'))
 
-    def is_auto_mode_1(self):
-        return False  # Авторежим #1 заблокирован
-
-    def is_auto_mode_2(self):
-        return self.auto_mode_index == 2
-
     def _get_site_button_text(self):
         # Название кнопки берём из общего словаря переводов.
         # Это позволяет ей корректно меняться вместе с остальным интерфейсом.
@@ -2960,8 +3832,17 @@ class XiaomiUnlockTool:
             pass
 
         safe_config(getattr(self, 'update_button', None), text=self.translation.tr('check_updates'))
-        safe_config(getattr(self, 'site_btn', None), text=self._get_site_button_text())
+        safe_config(getattr(self, 'version_label', None), text=self.translation.tr('current_version').format(CURRENT_VERSION))
         safe_config(getattr(self, 'title_label', None), text=self.translation.tr('main_title'))
+        if hasattr(self, 'sub_label') and self.sub_label:
+            cur_domain = "miunlocktool.ru" if self.translation.language == "ru" else "miunlock.su"
+            lang_display = Translation.get_display_name(self.translation.language)
+            safe_config(self.sub_label, text=f"{lang_display} • {cur_domain}")
+        safe_config(getattr(self, 'beijing_timer_title_label', None), text=self.translation.tr('beijing_time_title'))
+        safe_config(getattr(self, 'beijing_timer_subtext_label', None), text=self.translation.tr('beijing_submission_hint'))
+        safe_config(getattr(self, 'beijing_collapse_btn', None), text=f"▲ {self.translation.tr('beijing_clock_collapse')}")
+        if hasattr(self, '_apply_beijing_clock_state'):
+            self._apply_beijing_clock_state()
         if hasattr(self, 'header_region_label'):
             try:
                 user_reg = self.settings.get('region', detect_user_region())
@@ -2974,9 +3855,14 @@ class XiaomiUnlockTool:
 
         # Обновляем текст кнопок вкладок
         if hasattr(self, 'tab_buttons') and self.tab_buttons:
-            for key in ('unlock', 'settings', 'mi_unlock'):
+            for key in ('unlock', 'settings', 'hyperos1_bypass', 'mi_unlock'):
                 if key in self.tab_buttons:
                     safe_config(self.tab_buttons[key], text=self.translation.tr(f'tab_{key}'))
+
+        safe_config(getattr(self, 'bypass_header_label', None), text=f"⚡ {self.translation.tr('tab_hyperos1_bypass')}")
+        safe_config(getattr(self, 'bypass_title_label', None), text=self.translation.tr('hyperos1_bypass_title'))
+        safe_config(getattr(self, 'bypass_desc_label', None), text=self.translation.tr('hyperos1_bypass_desc'))
+        safe_config(getattr(self, 'bypass_return_btn', None), text=self.translation.tr('hyperos1_bypass_return_btn'))
 
         if hasattr(self, 'settings_sidebar_buttons') and self.settings_sidebar_buttons:
             section_titles = {
@@ -2993,7 +3879,8 @@ class XiaomiUnlockTool:
             safe_config(getattr(self, 'sidebar_title_label', None), text=self.translation.tr('sections_menu'))
             try:
                 active_sec = getattr(self, 'settings_active_section', 'about')
-                self._show_settings_section(active_sec)
+                self._clear_settings_cache()
+                self._show_settings_section(active_sec, animated=False)
             except Exception as e:
                 print(f"Error re-showing settings section on language change: {e}")
 
@@ -3036,7 +3923,6 @@ class XiaomiUnlockTool:
         safe_config(getattr(self, 'login_btn', None), text=self.translation.tr('login_btn'))
         safe_config(getattr(self, 'timings_btn', None), text=self.translation.tr('timings_btn'))
         safe_config(getattr(self, 'check_eligibility_btn', None), text=self.translation.tr('check_eligibility_btn'))
-        safe_config(getattr(self, 'info_label', None), text=self.translation.tr('info'))
         self.status_var.set(self.translation.tr('status_ready'))
 
         if self.auto_mode_index == 0:
@@ -3046,7 +3932,6 @@ class XiaomiUnlockTool:
 
         self.time_var.set(self.translation.tr('time'))
         safe_config(getattr(self, 'mi_label', None), text=self.translation.tr('mi_unlock_label'))
-        safe_config(getattr(self, 'mi_info_label', None), text=self.translation.tr('info'))
         safe_config(getattr(self, 'mi_input_label', None), text=self.translation.tr('input_label'))
         safe_config(getattr(self, 'mi_input_entry', None), placeholder_text=self.translation.tr('mi_unlock_input_placeholder'))
         safe_config(getattr(self, 'mi_log_label', None), text=self.translation.tr('mi_unlock_log_title'))
@@ -3054,6 +3939,7 @@ class XiaomiUnlockTool:
         safe_config(getattr(self, 'start_mi_btn', None), text=self.translation.tr('mi_unlock_start_button'))
         safe_config(getattr(self, 'mi_drivers_btn', None), text=self.translation.tr('mi_unlock_drivers_button'))
         safe_config(getattr(self, 'mi_close_btn', None), text=self.translation.tr('exit'))
+        safe_config(getattr(self, 'animations_checkbox', None), text=self.translation.tr('animations_checkbox'))
 
         # Обновляем статусы Mi Unlock, если сейчас отображается один из стандартных переводимых статусов.
         mi_status_keys = (
@@ -3084,18 +3970,21 @@ class XiaomiUnlockTool:
         safe_config(getattr(self, 'start_button', None), text=self.translation.tr('submit_application'))
         safe_config(getattr(self, 'exit_button', None), text=self.translation.tr('exit'))
 
-        # Исправлено: плейсхолдер всегда "new_bbs_ServiceToken"
-        safe_config(getattr(self, 'cookie_entry', None), placeholder_text="new_bbs_ServiceToken")
+        # Плейсхолдер с точками на конце
+        safe_config(getattr(self, 'cookie_entry', None), placeholder_text=self.translation.tr('cookie_placeholder'))
         safe_config(getattr(self, 'manual_time_entry', None), placeholder_text="59.1")
 
-        safe_config(getattr(self, 'theme_color_entry', None), placeholder_text=self.translation.tr('theme_color_placeholder'))
+        if hasattr(self, 'login_panel') and self.login_panel is not None:
+            try:
+                if hasattr(self.login_panel, 'winfo_exists') and self.login_panel.winfo_exists():
+                    self.login_panel.update_ui_text()
+            except Exception as e:
+                print(f"Error updating login panel language: {e}")
+
         try:
             self.toggle_mode(self.mode_var.get())
         except Exception:
             pass
-
-    def update_theme_globally(self):
-        self.apply_theme('Dark')
 
     def update_md3_colors(self):
         dark_mode = True
@@ -3110,20 +3999,60 @@ class XiaomiUnlockTool:
 
         if getattr(self, 'params_card', None) is not None:
             self.params_card.configure(fg_color=MaterialColors.get_color('surface_container'))
-        if getattr(self, 'info_card', None) is not None:
-            self.info_card.configure(fg_color=MaterialColors.get_color('surface_container'))
         if getattr(self, 'log_card', None) is not None:
             self.log_card.configure(fg_color=MaterialColors.get_color('surface_container'))
+        if getattr(self, 'beijing_timer_card', None) is not None:
+            self.beijing_timer_card.configure(
+                fg_color=MaterialColors.get_color('surface_container_high'),
+                border_color=MaterialColors.get_color('outline_variant')
+            )
+        if getattr(self, 'beijing_collapsed_btn', None) is not None:
+            self.beijing_collapsed_btn.configure(
+                fg_color=MaterialColors.get_color('surface_container_high'),
+                hover_color=MaterialColors.get_color('surface_container_highest'),
+                border_color=MaterialColors.get_color('outline_variant'),
+                text_color=MaterialColors.get_color('primary')
+            )
+        if getattr(self, 'beijing_collapse_btn', None) is not None:
+            self.beijing_collapse_btn.configure(
+                border_color=MaterialColors.get_color('outline_variant'),
+                hover_color=MaterialColors.get_color('surface_container_highest'),
+                text_color=MaterialColors.get_color('on_surface_variant')
+            )
+        if getattr(self, 'beijing_timer_title_label', None) is not None:
+            self.beijing_timer_title_label.configure(text_color=MaterialColors.get_color('primary'))
+        if getattr(self, 'beijing_timer_subtext_label', None) is not None:
+            self.beijing_timer_subtext_label.configure(text_color=MaterialColors.get_color('on_surface_variant'))
+        if getattr(self, 'bypass_card', None) is not None:
+            self.bypass_card.configure(fg_color=MaterialColors.get_color('surface_container'))
+        if getattr(self, 'bypass_center_panel', None) is not None:
+            self.bypass_center_panel.configure(
+                fg_color=MaterialColors.get_color('surface_container_low'),
+                border_color=MaterialColors.get_color('outline_variant')
+            )
+        if getattr(self, 'bypass_icon_lbl', None) is not None:
+            self.bypass_icon_lbl.configure(text_color=MaterialColors.get_color('primary'))
+        if getattr(self, 'bypass_title_label', None) is not None:
+            self.bypass_title_label.configure(text_color=MaterialColors.get_color('on_surface'))
+        if getattr(self, 'bypass_desc_label', None) is not None:
+            self.bypass_desc_label.configure(text_color=MaterialColors.get_color('on_surface_variant'))
+        if getattr(self, 'bypass_return_btn', None) is not None:
+            self.bypass_return_btn.configure(
+                fg_color=MaterialColors.get_color('primary'),
+                hover_color=MaterialColors.get_color('primary_container'),
+                text_color=MaterialColors.get_color('on_primary'),
+                border_width=0
+            )
 
         text_color = MaterialColors.get_color('on_surface')
-        for _name in ('params_label', 'mode_label', 'manual_time_label', 'cookie_text_label', 'info_label', 'log_label'):
+        for _name in ('params_label', 'mode_label', 'manual_time_label', 'cookie_text_label', 'log_label'):
             _widget = getattr(self, _name, None)
             if _widget is not None:
                 _widget.configure(text_color=text_color)
 
         self.log_label_bg.configure(fg_color='#1F1F1F')
-        self.clear_log_bg.configure(fg_color='#1F1F1F')
-        self.exit_bg.configure(fg_color='#1F1F1F')
+        self.clear_log_bg.configure(fg_color='transparent')
+        self.exit_bg.configure(fg_color='transparent')
         if hasattr(self, 'params_label_bg'):
             self.params_label_bg.configure(fg_color='#1F1F1F')
 
@@ -3139,11 +4068,6 @@ class XiaomiUnlockTool:
                 if _name == 'log_text':
                     kwargs['border_color'] = MaterialColors.get_color('outline_variant')
                 _widget.configure(**kwargs)
-
-        for _name in ('status_text', 'time_text', 'application_status_text'):
-            _widget = getattr(self, _name, None)
-            if _widget is not None:
-                _widget.configure(fg_color='transparent', text_color=text_color)
 
         self.start_button.configure(
             fg_color=MaterialColors.get_color('primary'),
@@ -3176,18 +4100,18 @@ class XiaomiUnlockTool:
         _widget = getattr(self, 'mi_clear_log_btn', None)
         if _widget is not None:
             _widget.configure(
-                fg_color='transparent',
-                hover_color=MaterialColors.get_color('surface_container'),
-                text_color=MaterialColors.get_color('primary'),
+                fg_color='#202020',
+                hover_color='#383838',
+                text_color='#FFFFFF',
                 border_width=0
             )
 
         _widget = getattr(self, 'mi_close_btn', None)
         if _widget is not None:
             _widget.configure(
-                fg_color='transparent',
-                hover_color=MaterialColors.get_color('surface_container'),
-                text_color=MaterialColors.get_color('on_surface'),
+                fg_color='#202020',
+                hover_color='#383838',
+                text_color='#FFFFFF',
                 border_width=0
             )
 
@@ -3221,6 +4145,13 @@ class XiaomiUnlockTool:
                         border_color=MaterialColors.get_color('outline')
                     )
 
+        if hasattr(self, 'tab_containers') and self.tab_containers:
+            for c in self.tab_containers.values():
+                try:
+                    c.configure(fg_color=MaterialColors.get_color('background'))
+                except Exception:
+                    pass
+
         # Обновление кнопок боковой панели настроек сразу
         if hasattr(self, 'settings_sidebar_buttons') and self.settings_sidebar_buttons:
             for key, btn in self.settings_sidebar_buttons.items():
@@ -3247,22 +4178,22 @@ class XiaomiUnlockTool:
             )
 
         self.exit_button.configure(
-            fg_color='transparent',
-            hover_color=MaterialColors.get_color('surface_container'),
+            fg_color='#202020',
+            hover_color='#383838',
             text_color='#FFFFFF',
             border_width=0
         )
 
         self.clear_log_btn.configure(
-            fg_color='transparent',
-            hover_color='#565656',
+            fg_color='#202020',
+            hover_color='#383838',
             text_color='#FFFFFF',
             border_width=0
         )
 
         self.clear_log_bg.configure(
-            fg_color='#202020',
-            corner_radius=12,
+            fg_color='transparent',
+            corner_radius=16,
             border_width=0
         )
 
@@ -3272,7 +4203,11 @@ class XiaomiUnlockTool:
         self.main_container.configure(fg_color=MaterialColors.get_color('background'))
         self.content_area.configure(fg_color=MaterialColors.get_color('background'))
 
-        self.desc_label.configure(text_color=MaterialColors.get_color('on_surface_variant'))
+        if hasattr(self, 'desc_label') and self.desc_label and hasattr(self.desc_label, 'winfo_exists') and self.desc_label.winfo_exists():
+            self.desc_label.configure(text_color=MaterialColors.get_color('on_surface_variant'))
+        if hasattr(self, 'mi_desc_label') and self.mi_desc_label and hasattr(self.mi_desc_label, 'winfo_exists') and self.mi_desc_label.winfo_exists():
+            self.mi_desc_label.configure(text_color=MaterialColors.get_color('on_surface_variant'))
+        self._update_footer_colors()
 
     def toggle_fullscreen(self, event=None):
         self.is_fullscreen = not getattr(self, 'is_fullscreen', False)
@@ -3286,70 +4221,185 @@ class XiaomiUnlockTool:
             return "break"
 
     def exit_application(self):
+        if hasattr(self, 'thread_coordinator'):
+            try:
+                self.thread_coordinator.stop()
+            except Exception:
+                pass
         self.config['cookie'] = self.cookie_value.get()
         save_config(self.config)
         self.root.destroy()
         sys.exit(0)
 
-    def log_message(self, message, color=None):
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        formatted_message = f"[{timestamp}] {message}"
-
-        self.log_text.configure(state="normal")
-        self.log_text.insert("end", formatted_message + "\n")
-
-        if color:
-            last_line_index = int(self.log_text.index("end-1c").split(".")[0])
-            tag_name = f"color_{color}_{last_line_index}"
-            self.log_text.tag_add(tag_name, f"end-2l", "end-1c")
-
-            color_map = {
-                'green': '#4ADE80',
-                'red': '#F87171',
-                'blue': '#60A5FA',
-                'orange': '#FB923C',
-                'cyan': '#38BDF8',
-                'yellow': '#FBBF24',
-                'white': '#F1F5F9',
-            }
-            fg = color_map.get(color, color if str(color).startswith('#') else '#F1F5F9')
-            self.log_text.tag_config(tag_name, foreground=fg)
-
-        self.log_text.see("end")
-        self.log_text.configure(state="disabled")
-
+    def get_beijing_time(self):
         try:
-            if self.settings.get('log_to_txt', True):
-                if not hasattr(self, 'current_log_file') or self.current_log_file is None:
-                    if getattr(sys, 'frozen', False):
-                        base_dir = os.path.dirname(sys.executable)
-                    else:
-                        base_dir = os.path.dirname(os.path.abspath(__file__))
+            if hasattr(self, 'thread_coordinator') and getattr(self.thread_coordinator, '_time_sync_active', False):
+                synced = self.thread_coordinator.get_synced_beijing_time()
+                if synced:
+                    return synced
+            elif getattr(self, 'start_beijing_time', None) and getattr(self, 'start_timestamp', None):
+                return self.request_handler.get_synchronized_beijing_time(self.start_beijing_time, self.start_timestamp)
+        except Exception:
+            pass
+        return datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=8)))
 
-                    now = datetime.now()
-                    date_str = now.strftime("%d%m%Y_%H_%M_%S")
-                    filename = f"log_miunlock_{date_str}.txt"
-                    self.current_log_file = os.path.join(base_dir, filename)
-                    self._write_log_header()
+    def toggle_beijing_clock(self):
+        self.beijing_clock_collapsed = not getattr(self, 'beijing_clock_collapsed', False)
+        self.config['beijing_clock_collapsed'] = self.beijing_clock_collapsed
+        save_config(self.config)
+        self._apply_beijing_clock_state()
 
-                with open(self.current_log_file, 'a', encoding='utf-8') as f:
-                    f.write(formatted_message + "\n")
-        except Exception as e:
-            print(f"Ошибка записи лога: {e}")
+    def _apply_beijing_clock_state(self):
+        if not hasattr(self, 'beijing_clock_container') or not self.beijing_clock_container:
+            return
+        now_str = self.get_beijing_time().strftime("%H:%M:%S")
+        if getattr(self, 'beijing_clock_collapsed', False):
+            if hasattr(self, 'beijing_timer_card') and self.beijing_timer_card:
+                self.beijing_timer_card.pack_forget()
+            if hasattr(self, 'beijing_collapsed_btn') and self.beijing_collapsed_btn:
+                self.beijing_collapsed_btn.configure(
+                    text=f"🕒 {self.translation.tr('beijing_time_title')}: {now_str}   ▼ {self.translation.tr('beijing_clock_expand')}"
+                )
+                self.beijing_collapsed_btn.pack(fill="x")
+        else:
+            if hasattr(self, 'beijing_collapsed_btn') and self.beijing_collapsed_btn:
+                self.beijing_collapsed_btn.pack_forget()
+            if hasattr(self, 'beijing_timer_card') and self.beijing_timer_card:
+                self.beijing_timer_card.pack(fill="x")
+
+    def _tick_beijing_clock(self):
+        try:
+            now_bj = self.get_beijing_time()
+            time_str = now_bj.strftime("%H:%M:%S")
+            if hasattr(self, 'beijing_clock_label') and self.beijing_clock_label and hasattr(self.beijing_clock_label, 'winfo_exists') and self.beijing_clock_label.winfo_exists():
+                self.beijing_clock_label.configure(text=time_str)
+            if hasattr(self, 'beijing_collapsed_btn') and self.beijing_collapsed_btn and hasattr(self.beijing_collapsed_btn, 'winfo_exists') and self.beijing_collapsed_btn.winfo_exists():
+                self.beijing_collapsed_btn.configure(
+                    text=f"🕒 {self.translation.tr('beijing_time_title')}: {time_str}   ▼ {self.translation.tr('beijing_clock_expand')}"
+                )
+        except Exception:
+            pass
+        finally:
+            if hasattr(self, 'root') and self.root:
+                try:
+                    if hasattr(self.root, 'winfo_exists') and self.root.winfo_exists():
+                        self.root.after(200, self._tick_beijing_clock)
+                except Exception:
+                    pass
+
+    def _update_clock_text(self, time_str):
+        try:
+            if hasattr(self, 'time_var') and self.time_var is not None:
+                self.time_var.set(
+                    f"{self.translation.tr('time_synchronized')}: {time_str} (UTC+8)"
+                )
+            parts = str(time_str).split(' ')
+            t_val = parts[1] if len(parts) > 1 else str(time_str)
+            if hasattr(self, 'beijing_clock_label') and self.beijing_clock_label and hasattr(self.beijing_clock_label, 'winfo_exists') and self.beijing_clock_label.winfo_exists():
+                self.beijing_clock_label.configure(text=t_val)
+            if hasattr(self, 'beijing_collapsed_btn') and self.beijing_collapsed_btn and hasattr(self.beijing_collapsed_btn, 'winfo_exists') and self.beijing_collapsed_btn.winfo_exists():
+                self.beijing_collapsed_btn.configure(
+                    text=f"🕒 {self.translation.tr('beijing_time_title')}: {t_val}   ▼ {self.translation.tr('beijing_clock_expand')}"
+                )
+        except Exception:
+            pass
+
+    def _ensure_log_file(self):
+        if not hasattr(self, 'current_log_file') or self.current_log_file is None:
+            if getattr(sys, 'frozen', False):
+                base_dir = os.path.dirname(sys.executable)
+            else:
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+
+            now = datetime.now()
+            date_str = now.strftime("%d%m%Y_%H_%M_%S")
+            filename = f"log_miunlock_{date_str}.txt"
+            self.current_log_file = os.path.join(base_dir, filename)
+            self._write_log_header()
+
+    def _ui_insert_log(self, formatted_message, color=None):
+        try:
+            self.log_text.configure(state="normal")
+            if color:
+                tag_name = f"log_tag_{color}"
+                if not hasattr(self, '_configured_log_tags'):
+                    self._configured_log_tags = set()
+                if tag_name not in self._configured_log_tags:
+                    color_map = {
+                        'green': '#4ADE80',
+                        'red': '#F87171',
+                        'blue': '#60A5FA',
+                        'orange': '#FB923C',
+                        'cyan': '#38BDF8',
+                        'yellow': '#FBBF24',
+                        'white': '#F1F5F9',
+                    }
+                    fg = color_map.get(color, color if str(color).startswith('#') else '#F1F5F9')
+                    try:
+                        self.log_text.tag_config(tag_name, foreground=fg)
+                        self._configured_log_tags.add(tag_name)
+                    except Exception:
+                        pass
+                self.log_text.insert("end", formatted_message, (tag_name,))
+            else:
+                self.log_text.insert("end", formatted_message)
+
+            self.log_text.see("end")
+            self.log_text.configure(state="disabled")
+        except Exception:
+            pass
+
+    def log_message(self, message, color=None, write_to_file=True):
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        formatted_message = f"[{timestamp}] {message}\n"
+
+        if hasattr(self, 'thread_coordinator'):
+            self.thread_coordinator.post_to_ui(self._ui_insert_log, formatted_message, color)
+            if write_to_file:
+                self.thread_coordinator.queue_log_write(formatted_message)
+        else:
+            if threading.current_thread() is threading.main_thread():
+                self._ui_insert_log(formatted_message, color)
+                try:
+                    if write_to_file and self.settings.get('log_to_txt', True):
+                        self._ensure_log_file()
+                except Exception:
+                    pass
+            try:
+                if write_to_file and self.settings.get('log_to_txt', True):
+                    self._ensure_log_file()
+                    with open(self.current_log_file, 'a', encoding='utf-8') as f:
+                        f.write(formatted_message)
+            except Exception as e:
+                print(f"Ошибка записи лога: {e}")
 
     def _write_log_header(self):
         try:
+            mode_str = "Auto"
+            manual_str = ""
+            if threading.current_thread() is threading.main_thread():
+                try:
+                    if hasattr(self, 'mode_var') and self.mode_var is not None:
+                        mode_str = str(self.mode_var.get())
+                except Exception:
+                    pass
+                try:
+                    if hasattr(self, 'manual_time_var') and self.manual_time_var is not None:
+                        manual_str = str(self.manual_time_var.get())
+                except Exception:
+                    pass
+
             with open(self.current_log_file, 'w', encoding='utf-8') as f:
                 f.write("=== XIAOMI UNLOCK TOOL LOG ===\n")
                 f.write(f"Version: {CURRENT_VERSION}\n")
                 f.write(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
                 f.write("=" * 30 + "\n")
                 f.write("SETTINGS:\n")
-                f.write(f"Mode: {self.mode_var.get()}\n")
-                if self.mode_var.get() == self.translation.tr('auto_mode'):
+                f.write(f"Mode: {mode_str}\n")
+                if mode_str == self.translation.tr('auto_mode'):
                     f.write(f"Spam Mode: {self.settings.get('spam_mode', True)}\n")
-                if self.mode_var.get() == self.translation.tr('manual_mode'):
-                    f.write(f"Manual Time Target: {self.manual_time_var.get()}\n")
+                if mode_str == self.translation.tr('manual_mode'):
+                    f.write(f"Manual Time Target: {manual_str}\n")
                 f.write(f"Skip Cookie Check: {self.settings.get('skip_cookie_check')}\n")
                 f.write(f"Language: {self.translation.language}\n")
                 f.write(f"Server List: {MI_SERVERS}\n")
@@ -3372,26 +4422,47 @@ class XiaomiUnlockTool:
             script_time
         ))
 
-        def check_time():
-            current_time = self.request_handler.get_synchronized_beijing_time(self.start_beijing_time,
-                                                                              self.start_timestamp)
-            self.time_var.set(
-                f"{self.translation.tr('time_synchronized')}: {current_time.strftime('%Y-%m-%d %H:%M:%S')} (UTC+8)")
-
-            if current_time >= send_at:
-                self.log_message(self.translation.tr('time_reached').format(
-                    current_time.strftime('%Y-%m-%d %H:%M:%S.%f')))
-                self.send_request_with_token()
+        def on_time_reached():
+            now = self.request_handler.get_synchronized_beijing_time(
+                self.start_beijing_time, self.start_timestamp
+            )
+            self.log_message(self.translation.tr('time_reached').format(
+                now.strftime('%Y-%m-%d %H:%M:%S.%f')
+            ))
+            if hasattr(self, 'thread_coordinator'):
+                self.thread_coordinator.submit_send(self.send_request_with_token)
             else:
-                self.root.after(10, check_time)
+                self.send_request_with_token()
 
-        check_time()
+        if hasattr(self, 'thread_coordinator'):
+            self.thread_coordinator.watch_single_target(send_at, on_time_reached)
+        else:
+            def check_time():
+                current_time = self.request_handler.get_synchronized_beijing_time(
+                    self.start_beijing_time, self.start_timestamp
+                )
+                self.time_var.set(
+                    f"{self.translation.tr('time_synchronized')}: {current_time.strftime('%Y-%m-%d %H:%M:%S')} (UTC+8)"
+                )
+                if current_time >= send_at:
+                    on_time_reached()
+                else:
+                    self.root.after(10, check_time)
+
+            check_time()
 
     def send_request_with_token(self):
         main_token = self.cookie_value.get().strip()
         if not main_token:
             self.log_message(self.translation.tr('cookie_error'), "red")
-            messagebox.showerror(self.translation.tr('error_title'), self.translation.tr('cookie_error'))
+            if hasattr(self, 'thread_coordinator'):
+                self.thread_coordinator.post_to_ui(
+                    messagebox.showerror,
+                    self.translation.tr('error_title'),
+                    self.translation.tr('cookie_error')
+                )
+            else:
+                messagebox.showerror(self.translation.tr('error_title'), self.translation.tr('cookie_error'))
             return
 
         device_id = self.request_handler.generate_device_id()
@@ -3404,6 +4475,11 @@ class XiaomiUnlockTool:
             return
 
         self.current_log_file = None
+        try:
+            if self.settings.get('log_to_txt', True):
+                self._ensure_log_file()
+        except Exception:
+            pass
 
         self.log_message("\n" + "=" * 50)
         self.log_message(self.translation.tr('unlock_process'))
@@ -3435,66 +4511,65 @@ class XiaomiUnlockTool:
             return
 
         self.start_timestamp = time.time()
+        if hasattr(self, 'thread_coordinator'):
+            self.thread_coordinator.arm_time_sync(self.start_beijing_time, self.start_timestamp)
 
         if self.auto_mode_index == 0:
             self.start_manual_mode()
         else:
-            self.log_message(f"[{self.translation.tr('auto_mode_2')}] {self.translation.tr('log_ping_wait')}", color="blue")
+            self.log_message(f"[{self.translation.tr('auto_mode_2')}] {self.translation.tr('status_mode2_waiting')}", color="blue")
             self.wait_for_presync_time()
 
     def wait_for_presync_time(self):
+        timings = sorted(getattr(self, 'selected_timings', [58.7, 58.8, 59.1, 59.3, 59.5, 59.8]))
+        first_send = timings[0] if timings else 58.7
         target_midnight = self.start_beijing_time.replace(
             hour=0, minute=0, second=0, microsecond=0
         ) + timedelta(days=1)
         base_minute = target_midnight - timedelta(minutes=1)
-        target_ping_start = base_minute + timedelta(seconds=40)
-        if target_ping_start <= self.start_beijing_time:
+        target_schedule = base_minute + timedelta(seconds=max(0.0, first_send - 5.0))
+        target_send_time = base_minute + timedelta(seconds=first_send)
+        if target_schedule <= self.start_beijing_time:
             base_minute += timedelta(days=1)
-            target_ping_start += timedelta(days=1)
+            target_schedule += timedelta(days=1)
+            target_send_time += timedelta(days=1)
 
         current_time = self.request_handler.get_synchronized_beijing_time(
             self.start_beijing_time, self.start_timestamp
         )
 
-        if current_time >= target_ping_start:
-            self.log_message(self.translation.tr('ping_measure_time_come'), "blue")
-            threading.Thread(target=self.measure_pings_and_send, daemon=True).start()
+        def on_schedule_time():
+            self.status_var.set(self.translation.tr('scheduling_requests'))
+            if hasattr(self, 'thread_coordinator'):
+                self.thread_coordinator.post_to_ui(self.schedule_multi_request)
+            else:
+                self.schedule_multi_request()
+
+        if current_time >= target_schedule:
+            on_schedule_time()
         else:
-            self.log_message(self.translation.tr('log_ping_wait'), "blue")
-            self.status_var.set(self.translation.tr('status_ping_wait'))
+            self.log_message(self.translation.tr('status_mode2_waiting'), "blue")
+            self.status_var.set(self.translation.tr('status_mode2_waiting'))
 
-            def check_time():
-                now = self.request_handler.get_synchronized_beijing_time(
-                    self.start_beijing_time, self.start_timestamp
-                )
-                self.time_var.set(
-                    f"{self.translation.tr('time_synchronized')}: {now.strftime('%Y-%m-%d %H:%M:%S')} (UTC+8)"
-                )
-                if now >= target_ping_start:
-                    self.log_message(self.translation.tr('ping_measure_time_come'), "blue")
-                    threading.Thread(target=self.measure_pings_and_send, daemon=True).start()
-                else:
-                    self.root.after(100, check_time)
+            if hasattr(self, 'thread_coordinator'):
+                self.thread_coordinator.watch_multi_target(target_schedule, on_schedule_time)
+            else:
+                def check_time():
+                    now = self.request_handler.get_synchronized_beijing_time(
+                        self.start_beijing_time, self.start_timestamp
+                    )
+                    self.time_var.set(
+                        f"{self.translation.tr('time_synchronized')}: {now.strftime('%Y-%m-%d %H:%M:%S')} (UTC+8)"
+                    )
+                    if now >= target_schedule:
+                        on_schedule_time()
+                    else:
+                        self.root.after(50, check_time)
 
-            check_time()
+                check_time()
 
     def measure_pings_and_send(self):
-        self.log_message(self.translation.tr('measuring_pings'), "blue")
-        self.status_var.set(self.translation.tr('measuring_pings'))
-        # Измеряем пинг за 15 секунд (с 23:59:40 до 23:59:55)
-        ping_http, ping_tcp = self.request_handler.measure_pings(duration=15)
-        default_ping = self.settings.get('default_ping', 165)
-        if ping_http is None:
-            ping_http = default_ping
-            self.log_message(self.translation.tr('ping_http_default').format(ping_http), "orange")
-        if ping_tcp is None:
-            ping_tcp = default_ping
-            self.log_message(self.translation.tr('ping_tcp_default').format(ping_tcp), "orange")
-
-        self.log_message(self.translation.tr('ping_measure_result').format(ping_http, ping_tcp), "green")
-        self.ping_var.set(f"HTTP: {ping_http:.1f} ms | TCP: {ping_tcp:.1f} ms")
-        self.status_var.set(self.translation.tr('scheduling_requests'))
-        self.schedule_multi_request(ping_http, ping_tcp)
+        self.schedule_multi_request()
 
     def schedule_multi_request(self, ping_http_ms=None, ping_tcp_ms=None):
         token = self.cookie_value.get().strip()
@@ -3524,11 +4599,18 @@ class XiaomiUnlockTool:
                 f"[{self.translation.tr('auto_mode_2')}] #{i + 1} target 23:59:{send_seconds:06.3f} ({delay:.2f}s) device_id={dev_id}",
                 "blue"
             )
-            threading.Timer(
-                delay,
-                self.request_handler.make_single_request_with_new_device_id,
-                args=(i + 1, send_seconds, dev_id, token)
-            ).start()
+            if hasattr(self, 'thread_coordinator'):
+                self.thread_coordinator.schedule_send_in(
+                    delay,
+                    self.request_handler.make_single_request_with_new_device_id,
+                    i + 1, send_seconds, dev_id, token
+                )
+            else:
+                threading.Timer(
+                    delay,
+                    self.request_handler.make_single_request_with_new_device_id,
+                    args=(i + 1, send_seconds, dev_id, token)
+                ).start()
 
         self.log_message(self.translation.tr('scheduling_requests'), "green")
 
@@ -3575,440 +4657,49 @@ class XiaomiUnlockTool:
         first_send = base_minute + timedelta(seconds=timings[0])
         if first_send <= start_beijing_time:
             base_minute += timedelta(days=1)
+            first_send += timedelta(days=1)
 
         token = self.cookie_value.get().strip()
         self.status_var.set(self.translation.tr('status_mode2_waiting'))
 
         schedule_time = base_minute + timedelta(seconds=max(0.0, timings[0] - 5.0))
 
-        def check_time():
+        def on_schedule_reached():
             now = self.request_handler.get_synchronized_beijing_time(self.start_beijing_time, self.start_timestamp)
-            self.time_var.set(f"{self.translation.tr('time_synchronized')}: {now.strftime('%Y-%m-%d %H:%M:%S')} (UTC+8)")
-            if now >= schedule_time:
-                for i, t_val in enumerate(timings):
-                    send_at = base_minute + timedelta(seconds=t_val)
-                    delay = max(0.0, (send_at - now).total_seconds())
-                    device_id = self.request_handler.generate_device_id()
-                    self.log_message(
-                        f"[{self.translation.tr('manual_mode')}] #{i + 1} target 23:59:{t_val:06.3f} ({delay:.2f}s) device_id={device_id}",
-                        "blue"
+            for i, t_val in enumerate(timings):
+                send_at = base_minute + timedelta(seconds=t_val)
+                delay = max(0.0, (send_at - now).total_seconds())
+                device_id = self.request_handler.generate_device_id()
+                self.log_message(
+                    f"[{self.translation.tr('manual_mode')}] #{i + 1} target 23:59:{t_val:06.3f} ({delay:.2f}s) device_id={device_id}",
+                    "blue"
+                )
+                if hasattr(self, 'thread_coordinator'):
+                    self.thread_coordinator.schedule_send_in(
+                        delay,
+                        self.request_handler.make_single_request_with_new_device_id,
+                        i + 1, t_val, device_id, token
                     )
+                else:
                     threading.Timer(
                         delay,
                         self.request_handler.make_single_request_with_new_device_id,
                         args=(i + 1, t_val, device_id, token)
                     ).start()
-                self.status_var.set(self.translation.tr('scheduling_requests'))
-            else:
-                self.root.after(20, check_time)
+            self.status_var.set(self.translation.tr('scheduling_requests'))
 
-        check_time()
+        if hasattr(self, 'thread_coordinator'):
+            self.thread_coordinator.watch_multi_target(schedule_time, on_schedule_reached)
+        else:
+            def check_time():
+                now = self.request_handler.get_synchronized_beijing_time(self.start_beijing_time, self.start_timestamp)
+                self.time_var.set(f"{self.translation.tr('time_synchronized')}: {now.strftime('%Y-%m-%d %H:%M:%S')} (UTC+8)")
+                if now >= schedule_time:
+                    on_schedule_reached()
+                else:
+                    self.root.after(20, check_time)
 
-    def start_auto_mode_2(self):
-        self.wait_for_presync_time()
-
-    def schedule_auto_mode_2_http_spam(self, base_send_time=None):
-        default_ping = self.settings.get('default_ping', 165)
-        self.schedule_multi_request(default_ping, default_ping)
-
-    def open_miflash_unlock(self):
-        try:
-            trans = self.translation
-            dark_mode = True
-
-            unlock_window = ctk.CTkToplevel()
-            unlock_window.title(trans.tr('mi_unlock_title'))
-            win_w = 860
-            win_h = 580
-            screen_w = unlock_window.winfo_screenwidth()
-            screen_h = unlock_window.winfo_screenheight()
-            if screen_h <= 720:
-                win_h = min(580, max(480, screen_h - 70))
-                win_w = min(860, max(680, screen_w - 40))
-            pos_x = max(0, (screen_w - win_w) // 2)
-            pos_y = max(0, (screen_h - win_h) // 2 - 20)
-            unlock_window.geometry(f"{win_w}x{win_h}+{pos_x}+{pos_y}")
-            unlock_window.minsize(680, 480)
-            unlock_window.resizable(True, True)
-            unlock_window.configure(fg_color=MaterialColors.get_color('background'))
-
-            if os.name == 'nt':
-                unlock_window.attributes('-toolwindow', True)
-
-            main_frame = ctk.CTkFrame(unlock_window, fg_color="transparent")
-            main_frame.pack(fill="both", expand=True, padx=20, pady=20)
-
-            title_card = MD3Card(main_frame, elevation=2)
-            title_card.pack(fill="x", pady=(0, 20))
-
-            title_inner = ctk.CTkFrame(title_card, fg_color="transparent")
-            title_inner.pack(fill="x", padx=24, pady=16)
-
-            title_label = MD3Label(
-                title_inner,
-                text=trans.tr('mi_unlock_title'),
-                typography='headline_medium'
-            )
-            title_label.pack(side="left")
-
-            close_btn = MD3Button(
-                title_inner,
-                text=trans.tr('mi_unlock_close'),
-                button_type='outlined',
-                size='small',
-                command=lambda: on_close()
-            )
-            close_btn.pack(side="right")
-
-            status_card = MD3Card(main_frame, elevation=1)
-            status_card.pack(fill="x", pady=(0, 15))
-
-            status_inner = ctk.CTkFrame(status_card, fg_color="transparent")
-            status_inner.pack(fill="x", padx=16, pady=12)
-
-            status_icon = ctk.CTkLabel(
-                status_inner,
-                text="⚙️",
-                font=("Arial", 18),
-                width=30
-            )
-            status_icon.pack(side="left")
-
-            status_label = MD3Label(
-                status_inner,
-                text=trans.tr('mi_unlock_checking_python'),
-                typography='body_medium'
-            )
-            status_label.pack(side="left", padx=(12, 0))
-
-            log_card = MD3Card(main_frame, elevation=2)
-            log_card.pack(fill="both", expand=True, pady=(0, 15))
-
-            log_header = ctk.CTkFrame(log_card, fg_color="transparent", height=40)
-            log_header.pack(fill="x", padx=16, pady=(16, 8))
-            log_header.pack_propagate(False)
-
-            log_title = MD3Label(
-                log_header,
-                text=trans.tr('execution_log'),
-                typography='title_medium'
-            )
-            log_title.pack(side="left")
-
-            clear_log_btn = MD3Button(
-                log_header,
-                text=trans.tr('clear_log_btn'),
-                button_type='text',
-                size='small',
-                command=lambda: clear_output()
-            )
-            clear_log_btn.pack(side="right")
-
-            output_container = ctk.CTkFrame(
-                log_card,
-                fg_color=MaterialColors.get_color('surface_container_lowest'),
-                corner_radius=8,
-                border_width=1,
-                border_color=MaterialColors.get_color('outline_variant')
-            )
-            output_container.pack(fill="both", expand=True, padx=16, pady=(0, 16))
-
-            output_text = ctk.CTkTextbox(
-                output_container,
-                wrap="word",
-                font=("Consolas", 11),
-                fg_color=MaterialColors.get_color('surface_container_lowest'),
-                text_color=MaterialColors.get_color('on_surface'),
-                border_width=0
-            )
-            output_text.pack(side="left", fill="both", expand=True)
-
-            scrollbar = ctk.CTkScrollbar(
-                output_container,
-                command=output_text.yview
-            )
-            scrollbar.pack(side="right", fill="y")
-            output_text.configure(yscrollcommand=scrollbar.set)
-            output_text.configure(state='disabled')
-
-            input_card = MD3Card(main_frame, elevation=1)
-            input_card.pack(fill="x")
-
-            input_inner = ctk.CTkFrame(input_card, fg_color="transparent")
-            input_inner.pack(fill="x", padx=16, pady=12)
-
-            input_label = MD3Label(
-                input_inner,
-                text=trans.tr('mi_unlock_input_label'),
-                typography='body_small'
-            )
-            input_label.pack(anchor="w", pady=(0, 5))
-
-            input_row = ctk.CTkFrame(input_inner, fg_color="transparent")
-            input_row.pack(fill="x")
-
-            input_entry = MD3Entry(
-                input_row,
-                placeholder_text=trans.tr('mi_unlock_input_placeholder'),
-                height=38
-            )
-            input_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
-
-            def send_input():
-                text = input_entry.get()
-                if text and process and process.poll() is None:
-                    try:
-                        process.stdin.write(text + "\n")
-                        process.stdin.flush()
-                        log_message(trans.tr('mi_unlock_input_prefix').format(text), "cyan")
-                        input_entry.delete(0, "end")
-                    except Exception as e:
-                        log_message(trans.tr('mi_unlock_input_error').format(e), "red")
-
-            send_btn = MD3Button(
-                input_row,
-                text=trans.tr('mi_unlock_send_btn'),
-                button_type='filled',
-                size='small',
-                command=send_input
-            )
-            send_btn.pack(side="right")
-            input_entry.bind("<Return>", lambda event: send_input())
-
-            window_closed = False
-            process = None
-
-            def on_close():
-                nonlocal window_closed, process
-                window_closed = True
-                if process and process.poll() is None:
-                    try:
-                        process.terminate()
-                        process.wait(timeout=2)
-                    except:
-                        try:
-                            process.kill()
-                        except:
-                            pass
-                unlock_window.destroy()
-
-            def clear_output():
-                output_text.configure(state="normal")
-                output_text.delete("1.0", "end")
-                output_text.configure(state="disabled")
-
-            def log_message(message, color="white"):
-                if window_closed:
-                    return
-                try:
-                    output_text.configure(state="normal")
-                    timestamp = datetime.now().strftime("%H:%M:%S")
-                    if isinstance(message, str) and message.startswith('mi_unlock_'):
-                        try:
-                            message = trans.tr(message)
-                        except:
-                            pass
-                    formatted = f"[{timestamp}] {message}\n"
-                    output_text.insert("end", formatted)
-                    output_text.see("end")
-                    output_text.configure(state="disabled")
-                    unlock_window.update_idletasks()
-                except Exception:
-                    pass
-
-            def update_status(message, color="white"):
-                if window_closed:
-                    return
-                try:
-                    if isinstance(message, str) and message.startswith('mi_unlock_'):
-                        try:
-                            message = trans.tr(message)
-                        except:
-                            pass
-                    if status_label and status_label.winfo_exists():
-                        status_label.configure(text=message, text_color=color)
-                    log_message(message, color)
-                except Exception:
-                    pass
-
-            def safe_update_status(msg, color="white"):
-                if not window_closed:
-                    unlock_window.after(0, lambda: update_status(msg, color))
-
-            def safe_log_message(msg, color="white"):
-                if not window_closed:
-                    unlock_window.after(0, lambda: log_message(msg, color))
-
-            def find_python():
-                test_commands = [sys.executable, 'python', 'python3', 'py'] if os.name == 'nt' else [sys.executable, 'python3', 'python']
-                flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-
-                for cmd in test_commands:
-                    try:
-                        result = subprocess.run(
-                            [cmd, '--version'],
-                            capture_output=True,
-                            text=True,
-                            timeout=5,
-                            creationflags=flags
-                        )
-                        if result.returncode == 0:
-                            version = (result.stdout or result.stderr).strip()
-                            return cmd, version
-                    except:
-                        continue
-                return None, None
-
-            def install_and_run_miunlock():
-                nonlocal process
-
-                try:
-                    safe_update_status('mi_unlock_checking_python', "orange")
-                    python_cmd, version = find_python()
-
-                    if not python_cmd:
-                        safe_log_message(trans.tr('mi_unlock_python_not_found'), "red")
-                        safe_log_message(trans.tr('mi_unlock_python_error_msg'), "red")
-                        safe_update_status("Python not found!", "red")
-                        return
-
-                    safe_log_message(trans.tr('mi_unlock_python_found').format(version), "green")
-                    safe_update_status(f"Python found: {version}", "green")
-
-                    flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-
-                    safe_update_status('mi_unlock_installing', "orange")
-                    safe_log_message("Attempting: pip install miunlock", "blue")
-
-                    install_cmds = [
-                        [python_cmd, '-m', 'pip', 'install', 'miunlock'],
-                        ['pip', 'install', 'miunlock'],
-                        [python_cmd, '-m', 'pip', 'install', 'miunlock', '--user']
-                    ]
-
-                    installed = False
-                    for cmd in install_cmds:
-                        try:
-                            safe_log_message(f"Trying: {' '.join(cmd)}", "blue")
-                            result = subprocess.run(
-                                cmd,
-                                capture_output=True,
-                                text=True,
-                                timeout=120,
-                                creationflags=flags
-                            )
-                            if result.returncode == 0:
-                                safe_log_message("✓ Installation successful!", "green")
-                                installed = True
-                                break
-                            else:
-                                safe_log_message(f"✗ Failed: {result.stderr[:200]}", "orange")
-                        except Exception as e:
-                            safe_log_message(f"✗ Error: {str(e)[:200]}", "orange")
-                            continue
-
-                    if not installed:
-                        safe_update_status('mi_unlock_install_error', "red")
-                        safe_log_message("All installation attempts failed", "red")
-                        return
-
-                    safe_update_status('mi_unlock_upgrading', "orange")
-                    safe_log_message("Attempting upgrade...", "blue")
-
-                    upgrade_cmds = [
-                        [python_cmd, '-m', 'pip', 'install', '--upgrade', 'miunlock'],
-                        ['pip', 'install', '--upgrade', 'miunlock']
-                    ]
-
-                    for cmd in upgrade_cmds:
-                        try:
-                            safe_log_message(f"Upgrading: {' '.join(cmd)}", "blue")
-                            result = subprocess.run(
-                                cmd,
-                                capture_output=True,
-                                text=True,
-                                timeout=60,
-                                creationflags=flags
-                            )
-                            if result.returncode == 0:
-                                safe_log_message("✓ Upgrade successful!", "green")
-                                break
-                            else:
-                                safe_log_message(f"✗ Upgrade failed: {result.stderr[:200]}", "orange")
-                        except Exception as e:
-                            safe_log_message(f"✗ Upgrade error: {str(e)[:200]}", "orange")
-                            continue
-
-                    safe_update_status('mi_unlock_starting', "green")
-                    safe_log_message(trans.tr('mi_unlock_launching'), "blue")
-
-                    run_cmds = [
-                        [python_cmd, '-m', 'miunlock'],
-                        ['miunlock']
-                    ]
-
-                    for cmd in run_cmds:
-                        try:
-                            safe_log_message(f"Running: {' '.join(cmd)}", "blue")
-                            process = subprocess.Popen(
-                                cmd,
-                                stdin=subprocess.PIPE,
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT,
-                                text=True,
-                                bufsize=1,
-                                universal_newlines=True,
-                                creationflags=flags
-                            )
-                            break
-                        except Exception as e:
-                            safe_log_message(f"✗ Failed to run: {str(e)[:200]}", "orange")
-                            continue
-                    else:
-                        safe_update_status("Failed to start miunlock!", "red")
-                        safe_log_message("All run attempts failed", "red")
-                        return
-
-                    def read_output():
-                        try:
-                            for line in iter(process.stdout.readline, ''):
-                                if window_closed:
-                                    break
-                                if line:
-                                    line_stripped = line.strip()
-                                    if line_stripped:
-                                        if not window_closed:
-                                            unlock_window.after(0, lambda l=line_stripped: log_message(l, "white"))
-                        except Exception as e:
-                            if "closed" not in str(e).lower() and not window_closed:
-                                unlock_window.after(0, lambda: log_message(trans.tr('mi_unlock_read_error').format(e),
-                                                                           "red"))
-
-                    read_thread = threading.Thread(target=read_output, daemon=True)
-                    read_thread.start()
-
-                    process.wait()
-
-                    if not window_closed:
-                        if process.returncode == 0:
-                            unlock_window.after(0, lambda: update_status('mi_unlock_completed', "green"))
-                            unlock_window.after(0, lambda: log_message(trans.tr('mi_unlock_finished'), "green"))
-                        else:
-                            unlock_window.after(0, lambda: log_message(
-                                trans.tr('mi_unlock_process_exit').format(process.returncode), "orange"))
-
-                except Exception as e:
-                    if not window_closed:
-                        unlock_window.after(0, lambda: update_status(trans.tr('mi_unlock_error').format(str(e)), "red"))
-                        unlock_window.after(0,
-                                            lambda: log_message(trans.tr('mi_unlock_critical_error').format(e), "red"))
-
-            threading.Thread(target=install_and_run_miunlock, daemon=True).start()
-            unlock_window.protocol("WM_DELETE_WINDOW", on_close)
-
-        except Exception as e:
-            trans = self.translation
-            messagebox.showerror(trans.tr('error_title'), trans.tr('mi_unlock_critical_error').format(e))
+            check_time()
 
 
 def main():

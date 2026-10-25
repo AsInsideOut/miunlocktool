@@ -1,8 +1,9 @@
-﻿package com.asinsideout.miunlocktool.ui.apply
+package com.asinsideout.miunlocktool.ui.apply
 
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import android.content.res.ColorStateList
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -12,6 +13,8 @@ import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.asinsideout.miunlocktool.R
 import com.asinsideout.miunlocktool.data.AuthPollResult
 import com.asinsideout.miunlocktool.data.AuthSessionInfo
+import com.asinsideout.miunlocktool.data.PreferencesManager
+import com.asinsideout.miunlocktool.data.ThemeColorManager
 import com.asinsideout.miunlocktool.data.XiaomiAuthManager
 import com.asinsideout.miunlocktool.databinding.BottomSheetXiaomiAuthBinding
 import kotlinx.coroutines.Job
@@ -43,17 +46,41 @@ class XiaomiAuthBottomSheet : BottomSheetDialogFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        applyTranslations()
+        applyAccentColor()
         setupListeners()
         startSession()
     }
 
+    private fun applyTranslations() {
+        val tm = com.asinsideout.miunlocktool.data.TranslationManager
+        binding.tvAuthTitle.text = tm.tr("login_title")
+        binding.tvAuthSubtitle.text = tm.tr("login_subtitle")
+        binding.tvAuthScanTip.text = tm.tr("login_qr_scan_tip")
+        binding.btnOpenBrowser.text = tm.tr("login_open_browser_btn")
+        binding.btnRefreshQr.text = tm.tr("login_refresh_qr")
+        binding.btnClose.text = tm.tr("close_btn")
+        binding.tvAuthStatus.text = tm.tr("login_loading_qr")
+    }
+
+    private fun applyAccentColor() {
+        val accentColor = PreferencesManager(requireContext()).accentColor
+        binding.ivAuthShield.imageTintList = ColorStateList.valueOf(accentColor)
+        ThemeColorManager.applyPrimaryButtonStyle(binding.btnOpenBrowser, accentColor)
+        ThemeColorManager.applyTonalButtonStyle(binding.btnRefreshQr, accentColor)
+        ThemeColorManager.applyOutlinedButtonStyle(binding.btnClose, accentColor)
+        binding.progressAuth.setIndicatorColor(accentColor)
+        binding.pbQrLoading.indeterminateTintList = ColorStateList.valueOf(accentColor)
+    }
+
     private fun setupListeners() {
+        val tm = com.asinsideout.miunlocktool.data.TranslationManager
         binding.btnClose.setOnClickListener {
             dismiss()
         }
 
         binding.btnRefreshQr.setOnClickListener {
-            binding.tvAuthStatus.text = getString(R.string.login_refreshing_qr)
+            binding.tvAuthStatus.text = tm.tr("login_refreshing_qr")
             binding.pbQrLoading.visibility = View.VISIBLE
             binding.ivQrCode.setImageBitmap(null)
             startSession()
@@ -65,15 +92,16 @@ class XiaomiAuthBottomSheet : BottomSheetDialogFragment() {
                 try {
                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(loginUrl))
                     startActivity(intent)
-                    binding.tvAuthStatus.text = getString(R.string.login_browser_opened)
+                    binding.tvAuthStatus.text = tm.tr("login_browser_opened")
                 } catch (e: Exception) {
-                    binding.tvAuthStatus.text = getString(R.string.login_error, e.localizedMessage ?: "Unknown")
+                    binding.tvAuthStatus.text = tm.tr("login_error", e.localizedMessage ?: "Unknown")
                 }
             }
         }
     }
 
     private fun startSession() {
+        val tm = com.asinsideout.miunlocktool.data.TranslationManager
         pollingJob?.cancel()
         binding.progressAuth.visibility = View.VISIBLE
 
@@ -86,7 +114,7 @@ class XiaomiAuthBottomSheet : BottomSheetDialogFragment() {
                 startPolling(session.lpUrl)
             } else {
                 val errorMsg = result.exceptionOrNull()?.localizedMessage ?: "Network error"
-                binding.tvAuthStatus.text = getString(R.string.login_qr_fetch_error, errorMsg)
+                binding.tvAuthStatus.text = tm.tr("login_qr_fetch_error", errorMsg)
                 binding.pbQrLoading.visibility = View.GONE
                 binding.progressAuth.visibility = View.GONE
             }
@@ -94,6 +122,7 @@ class XiaomiAuthBottomSheet : BottomSheetDialogFragment() {
     }
 
     private suspend fun loadQrCode(qrUrl: String) {
+        val tm = com.asinsideout.miunlocktool.data.TranslationManager
         if (qrUrl.isEmpty()) {
             binding.pbQrLoading.visibility = View.GONE
             return
@@ -104,14 +133,15 @@ class XiaomiAuthBottomSheet : BottomSheetDialogFragment() {
             binding.pbQrLoading.visibility = View.GONE
             if (bitmap != null) {
                 binding.ivQrCode.setImageBitmap(bitmap)
-                binding.tvAuthStatus.text = getString(R.string.login_waiting)
+                binding.tvAuthStatus.text = tm.tr("login_waiting")
             } else {
-                binding.tvAuthStatus.text = getString(R.string.login_qr_fetch_error, "Image download failed")
+                binding.tvAuthStatus.text = tm.tr("login_qr_fetch_error", "Image download failed")
             }
         }
     }
 
     private fun startPolling(lpUrl: String) {
+        val tm = com.asinsideout.miunlocktool.data.TranslationManager
         pollingJob?.cancel()
         pollingJob = viewLifecycleOwner.lifecycleScope.launch {
             var retryCount = 0
@@ -132,7 +162,7 @@ class XiaomiAuthBottomSheet : BottomSheetDialogFragment() {
                         delay(2000)
                     }
                     is AuthPollResult.Expired -> {
-                        binding.tvAuthStatus.text = getString(R.string.login_qr_expired)
+                        binding.tvAuthStatus.text = tm.tr("login_qr_expired")
                         return@launch
                     }
                 }
@@ -141,12 +171,13 @@ class XiaomiAuthBottomSheet : BottomSheetDialogFragment() {
     }
 
     private fun handleSuccess(token: String) {
+        val tm = com.asinsideout.miunlocktool.data.TranslationManager
         if (isAuthCompleted) return
         isAuthCompleted = true
         pollingJob?.cancel()
 
         if (_binding != null) {
-            binding.tvAuthStatus.text = getString(R.string.login_success)
+            binding.tvAuthStatus.text = tm.tr("login_success")
             binding.progressAuth.visibility = View.GONE
         }
 

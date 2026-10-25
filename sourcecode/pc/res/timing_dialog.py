@@ -20,6 +20,7 @@ TIMING_PROFILES = {
     'europe': {
         'id': 'europe',
         'name_ru': 'Европейский',
+        'name_uk': 'Європейський',
         'name_en': 'Europe',
         'timings': [58.700, 58.800, 59.100, 59.300, 59.500, 59.800],
         'region': 'Europe',
@@ -28,6 +29,7 @@ TIMING_PROFILES = {
     'asia': {
         'id': 'asia',
         'name_ru': 'Азиатский',
+        'name_uk': 'Азійський',
         'name_en': 'Asia',
         'timings': [58.800, 59.100, 59.300, 59.500, 59.700],
         'region': 'Asia',
@@ -36,6 +38,7 @@ TIMING_PROFILES = {
     'usa_africa': {
         'id': 'usa_africa',
         'name_ru': 'США / Африка',
+        'name_uk': 'США / Африка',
         'name_en': 'USA / Africa',
         'timings': [58.500, 58.800, 59.100, 59.300, 59.500, 59.700],
         'region': 'America',
@@ -88,14 +91,15 @@ class TimingSettingsDialog(ctk.CTkToplevel):
         ctk.set_appearance_mode("Dark")
         self.title(self.translation.tr('timings_dialog_title'))
 
-        # Размеры окна увеличены для лучшей читаемости
-        win_w = 640
-        win_h = 580
+        # Компактные размеры окна: 720px в длину
+        win_w = 720
+        win_h = 460
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
-        if screen_h <= 650:
-            win_h = min(580, max(500, screen_h - 40))
-            win_w = min(640, max(540, screen_w - 30))
+        if screen_w < 760:
+            win_w = min(720, max(540, screen_w - 30))
+        if screen_h < 520:
+            win_h = min(460, max(400, screen_h - 40))
 
         pos_x = max(0, (screen_w - win_w) // 2)
         pos_y = max(0, (screen_h - win_h) // 2 - 20)
@@ -146,16 +150,16 @@ class TimingSettingsDialog(ctk.CTkToplevel):
             border_width=1,
             border_color="#303038"
         )
-        container.pack(fill="both", expand=True, padx=12, pady=12)
+        container.pack(fill="both", expand=True, padx=10, pady=10)
 
         # 1. Заголовок окна
         header_frame = ctk.CTkFrame(container, fg_color="transparent")
-        header_frame.pack(fill="x", padx=4, pady=(6, 12))
+        header_frame.pack(fill="x", padx=2, pady=(2, 6))
 
         title_label = ctk.CTkLabel(
             header_frame,
             text=self.translation.tr('timings_dialog_title'),
-            font=("Arial", 18, "bold"),
+            font=("Arial", 16, "bold"),
             text_color=TEXT_HEADER
         )
         title_label.pack(side="left")
@@ -167,10 +171,10 @@ class TimingSettingsDialog(ctk.CTkToplevel):
         reg_label = ctk.CTkLabel(
             reg_badge,
             text=f"Регион: {current_region}",
-            font=("Arial", 12, "bold"),
+            font=("Arial", 11, "bold"),
             text_color=color_primary
         )
-        reg_label.pack(padx=10, pady=4)
+        reg_label.pack(padx=8, pady=3)
 
         # 2. Карточка со слотами 15 таймингов (3 колонки по 5 строк) - без выбора профилей
         slots_card = ctk.CTkFrame(
@@ -180,18 +184,18 @@ class TimingSettingsDialog(ctk.CTkToplevel):
             border_width=1,
             border_color=CARD_BORDER
         )
-        slots_card.pack(fill="both", expand=True, pady=(0, 10))
+        slots_card.pack(fill="both", expand=True, pady=(0, 6))
 
         slots_inner = ctk.CTkFrame(slots_card, fg_color="transparent")
-        slots_inner.pack(fill="both", expand=True, padx=14, pady=12)
+        slots_inner.pack(fill="both", expand=True, padx=10, pady=8)
 
         slots_header_row = ctk.CTkFrame(slots_inner, fg_color="transparent")
-        slots_header_row.pack(fill="x", pady=(0, 10))
+        slots_header_row.pack(fill="x", pady=(0, 6))
 
         slots_desc = ctk.CTkLabel(
             slots_header_row,
             text=self.translation.tr('timings_slots_title'),
-            font=("Arial", 14, "bold"),
+            font=("Arial", 13, "bold"),
             text_color=TEXT_BODY
         )
         slots_desc.pack(side="left")
@@ -199,12 +203,12 @@ class TimingSettingsDialog(ctk.CTkToplevel):
         slots_hint = ctk.CTkLabel(
             slots_header_row,
             text="(формат: 59.100 или 59:100)",
-            font=("Arial", 12),
+            font=("Arial", 11),
             text_color="#94A3B8"
         )
         slots_hint.pack(side="left", padx=(8, 0))
 
-        # Сетка 3 колонки x 5 строк с крупными удобными элементами
+        # Сетка 3 колонки x 5 строк с аккуратными компактными элементами
         grid_frame = ctk.CTkFrame(slots_inner, fg_color="transparent")
         grid_frame.pack(fill="both", expand=True)
         grid_frame.grid_columnconfigure((0, 1, 2), weight=1)
@@ -215,15 +219,15 @@ class TimingSettingsDialog(ctk.CTkToplevel):
             row = i % 5
 
             cell = ctk.CTkFrame(grid_frame, fg_color="transparent")
-            cell.grid(row=row, column=col, sticky="w", padx=8, pady=4)
+            cell.grid(row=row, column=col, sticky="w", padx=6, pady=2)
 
             cb = ctk.CTkCheckBox(
                 cell,
                 text="",
                 variable=self.slot_vars[i],
                 command=lambda idx=i: self._on_slot_toggle(idx),
-                width=22,
-                height=22,
+                width=20,
+                height=20,
                 corner_radius=5,
                 fg_color=color_primary,
                 checkmark_color="#18181C"
@@ -233,9 +237,9 @@ class TimingSettingsDialog(ctk.CTkToplevel):
             idx_lbl = ctk.CTkLabel(
                 cell,
                 text=f"#{i + 1:02d}",
-                font=("Consolas", 12, "bold"),
+                font=("Consolas", 11, "bold"),
                 text_color="#94A3B8",
-                width=28,
+                width=26,
                 anchor="e"
             )
             idx_lbl.pack(side="left", padx=(0, 6))
@@ -243,10 +247,10 @@ class TimingSettingsDialog(ctk.CTkToplevel):
             entry = ctk.CTkEntry(
                 cell,
                 textvariable=self.slot_entry_vars[i],
-                width=96,
-                height=32,
+                width=90,
+                height=28,
                 corner_radius=8,
-                font=("Consolas", 13, "bold"),
+                font=("Consolas", 12, "bold"),
                 fg_color="#18181C",
                 border_color="#475569",
                 border_width=1,
@@ -258,19 +262,19 @@ class TimingSettingsDialog(ctk.CTkToplevel):
             sec_lbl = ctk.CTkLabel(
                 cell,
                 text="с",
-                font=("Arial", 12, "bold"),
+                font=("Arial", 11, "bold"),
                 text_color="#94A3B8"
             )
             sec_lbl.pack(side="left")
 
         # 3. Строка счетчика и предупреждения
         info_row = ctk.CTkFrame(slots_inner, fg_color="transparent")
-        info_row.pack(fill="x", pady=(10, 0))
+        info_row.pack(fill="x", pady=(6, 0))
 
         self.count_label = ctk.CTkLabel(
             info_row,
             text="",
-            font=("Arial", 13, "bold"),
+            font=("Arial", 12, "bold"),
             text_color=color_primary
         )
         self.count_label.pack(side="left")
@@ -278,7 +282,7 @@ class TimingSettingsDialog(ctk.CTkToplevel):
         self.warning_min_label = ctk.CTkLabel(
             info_row,
             text="",
-            font=("Arial", 13, "bold"),
+            font=("Arial", 12, "bold"),
             text_color=COLOR_ERROR
         )
         self.warning_min_label.pack(side="right")
@@ -293,31 +297,32 @@ class TimingSettingsDialog(ctk.CTkToplevel):
             border_width=1,
             border_color="#F59E0B"
         )
-        risk_card.pack(fill="x", pady=(0, 12))
+        risk_card.pack(fill="x", pady=(0, 8))
 
         risk_inner = ctk.CTkFrame(risk_card, fg_color="transparent")
-        risk_inner.pack(fill="x", padx=12, pady=8)
+        risk_inner.pack(fill="x", padx=10, pady=6)
 
         risk_label = ctk.CTkLabel(
             risk_inner,
             text=self.translation.tr('timings_risk_warning'),
-            font=("Arial", 12),
+            font=("Arial", 11),
             text_color=TEXT_BODY,
             justify="left",
-            wraplength=580
+            wraplength=660
         )
         risk_label.pack(anchor="w")
 
         # 5. Кнопки действий
         actions_frame = ctk.CTkFrame(container, fg_color="transparent")
-        actions_frame.pack(fill="x", side="bottom", pady=(0, 4))
+        actions_frame.pack(fill="x", side="bottom", pady=(0, 2))
 
         reset_btn = MD3Button(
             actions_frame,
             text=self.translation.tr('timings_reset_btn'),
             button_type='outlined',
-            size='medium',
-            height=36,
+            size='small',
+            height=32,
+            font=("Arial", 12),
             command=self._reset_to_defaults
         )
         reset_btn.pack(side="left")
@@ -326,8 +331,9 @@ class TimingSettingsDialog(ctk.CTkToplevel):
             actions_frame,
             text=self.translation.tr('timings_save_btn'),
             button_type='filled',
-            size='medium',
-            height=36,
+            size='small',
+            height=32,
+            font=("Arial", 12, "bold"),
             command=self._save_and_close
         )
         save_btn.pack(side="right")

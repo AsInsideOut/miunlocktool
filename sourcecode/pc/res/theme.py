@@ -278,23 +278,3 @@ class MD3Switch(ctk.CTkSwitch):
         }
         base_kwargs.update(kwargs)
         super().__init__(master, **base_kwargs)
-
-
-class MD3SegmentedButton(ctk.CTkSegmentedButton):
-    def __init__(self, master, **kwargs):
-        dark_mode = ctk.get_appearance_mode() == "Dark"
-        base_kwargs = {
-            'height': 40,
-            'corner_radius': 20,
-            'border_width': 1,
-            'font': MaterialTypography.LABEL_MEDIUM,
-            'fg_color': MaterialColors.get_color('surface_container', dark_mode),
-            'selected_color': MaterialColors.get_color('primary', dark_mode),
-            'selected_hover_color': MaterialColors.get_color('primary_container', dark_mode),
-            'unselected_color': MaterialColors.get_color('surface_container_low', dark_mode),
-            'unselected_hover_color': MaterialColors.get_color('surface_container', dark_mode),
-            'text_color': MaterialColors.get_color('on_surface', dark_mode),
-            'text_color_disabled': MaterialColors.get_color('on_surface_variant', dark_mode),
-        }
-        base_kwargs.update(kwargs)
-        super().__init__(master, **base_kwargs)

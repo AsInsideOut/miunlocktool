@@ -9,6 +9,8 @@ def get_system_language():
             lang_lower = lang.lower()
             if lang_lower.startswith("ru"):
                 return "ru"
+            elif lang_lower.startswith("uk") or "ukrainian" in lang_lower:
+                return "uk"
             elif lang_lower.startswith("id") or lang_lower.startswith("in") or "indonesian" in lang_lower:
                 return "id"
             elif lang_lower.startswith("es") or "spanish" in lang_lower:
@@ -23,6 +25,8 @@ def get_system_language():
     env_lang = (os.environ.get("LANG", "") + os.environ.get("LANGUAGE", "")).lower()
     if "ru" in env_lang:
         return "ru"
+    elif "uk" in env_lang or "ukrainian" in env_lang:
+        return "uk"
     elif "id" in env_lang or "in" in env_lang or "indonesian" in env_lang:
         return "id"
     elif "es" in env_lang or "spanish" in env_lang:
@@ -36,21 +40,184 @@ def get_system_language():
 
 
 class Translation:
+    SUPPORTED_LANGUAGES = ['ru', 'en', 'uk', 'id', 'es', 'zh', 'pt']
+    BASE_DOWNLOAD_URL = "https://miunlock.su/download/languages"
+
     def __init__(self, language=None):
         if language is None:
             self.language = get_system_language()
         else:
             self.language = language
-        if self.language not in {'ru', 'en', 'id', 'es', 'zh', 'pt'}:
+        if self.language not in self.SUPPORTED_LANGUAGES:
             self.language = 'en'
+
+        self.languages_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'languages')
+        
+        # По умолчанию встроены только 2 языка: русский и английский
         self.translations = {
             'ru': self.get_russian(),
             'en': self.get_english(),
-            'id': self.get_indonesian(),
-            'es': self.get_spanish(),
-            'zh': self.get_chinese(),
-            'pt': self.get_portuguese(),
+            'uk': self.get_ukrainian(),
         }
+
+        # Если выбран внешний язык, загружаем или скачиваем его
+        if self.language not in ('ru', 'en', 'uk'):
+            if not self.load_language(self.language):
+                self.language = 'en'
+
+    def download_language(self, lang_code):
+        os.makedirs(self.languages_dir, exist_ok=True)
+        dest_path = os.path.join(self.languages_dir, f"lang-{lang_code}.py")
+        temp_path = dest_path + ".tmp"
+
+        urls = [
+            f"{self.BASE_DOWNLOAD_URL}/lang-{lang_code}.py",
+            f"http://miunlock.su/download/languages/lang-{lang_code}.py",
+            f"http://212.113.104.87/download/languages/lang-{lang_code}.py"
+        ]
+
+        # 1. Try requests library (fastest, no Windows WPAD proxy delay)
+        try:
+            import requests
+            try:
+                import urllib3
+                urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            except Exception:
+                pass
+            for url in urls:
+                try:
+                    resp = requests.get(
+                        url,
+                        timeout=(4, 8),
+                        headers={
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) XiaomiUnlockTool/8.2',
+                            'Host': 'miunlock.su'
+                        },
+                        verify=False
+                    )
+                    if resp.status_code == 200 and len(resp.content) > 100:
+                        with open(temp_path, 'wb') as out_f:
+                            out_f.write(resp.content)
+                        if os.path.exists(dest_path):
+                            try:
+                                os.remove(dest_path)
+                            except Exception:
+                                pass
+                        os.replace(temp_path, dest_path)
+                        return dest_path
+                except Exception as req_err:
+                    print(f"[LanguageDownload] requests failed for {url}: {req_err}")
+        except ImportError:
+            pass
+
+        # 2. Fallback to urllib.request with WPAD bypass (ProxyHandler({})) and SSL unverified context
+        for url in urls:
+            try:
+                import urllib.request
+                import ssl
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+                opener = urllib.request.build_opener(
+                    urllib.request.ProxyHandler({}),
+                    urllib.request.HTTPSHandler(context=ctx)
+                )
+                req = urllib.request.Request(
+                    url,
+                    headers={
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) XiaomiUnlockTool/8.2',
+                        'Host': 'miunlock.su'
+                    }
+                )
+                with opener.open(req, timeout=8) as resp:
+                    if resp.status == 200:
+                        data = resp.read()
+                        if len(data) > 100:
+                            with open(temp_path, 'wb') as out_f:
+                                out_f.write(data)
+                            if os.path.exists(dest_path):
+                                try:
+                                    os.remove(dest_path)
+                                except Exception:
+                                    pass
+                            os.replace(temp_path, dest_path)
+                            return dest_path
+            except Exception as e:
+                print(f"[LanguageDownload] urllib failed for {url}: {e}")
+
+        return None
+
+    def is_download_needed(self, lang_code):
+        """Возвращает True только если язык не встроен и файл еще не скачан на диск."""
+        if lang_code in ('ru', 'en', 'uk'):
+            return False
+        dest_path = os.path.join(self.languages_dir, f"lang-{lang_code}.py")
+        return not os.path.isfile(dest_path)
+
+    @staticmethod
+    def get_display_name(lang_code):
+        names = {
+            'ru': 'Русский (ru)',
+            'en': 'English (en)',
+            'uk': 'Українська (uk)',
+            'es': 'Español (es)',
+            'pt': 'Português (pt)',
+            'id': 'Bahasa Indonesia (id)',
+            'zh': '中文 (zh)'
+        }
+        return names.get(lang_code, str(lang_code).upper())
+
+    def load_language(self, lang_code):
+        if lang_code in self.translations:
+            return True
+        if lang_code == 'ru':
+            self.translations['ru'] = self.get_russian()
+            return True
+        elif lang_code == 'en':
+            self.translations['en'] = self.get_english()
+            return True
+        elif lang_code == 'uk':
+            self.translations['uk'] = self.get_ukrainian()
+            return True
+
+        os.makedirs(self.languages_dir, exist_ok=True)
+        dest_path = os.path.join(self.languages_dir, f"lang-{lang_code}.py")
+        if not os.path.isfile(dest_path):
+            downloaded = self.download_language(lang_code)
+            if not downloaded or not os.path.isfile(dest_path):
+                return False
+
+        try:
+            import importlib.util
+            spec = importlib.util.spec_from_file_location(f"lang_{lang_code}", dest_path)
+            if spec and spec.loader:
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                if hasattr(mod, 'get_translations'):
+                    self.translations[lang_code] = mod.get_translations()
+                    return True
+                elif hasattr(mod, 'translations'):
+                    self.translations[lang_code] = mod.translations
+                    return True
+        except Exception as e:
+            print(f"Error loading language file '{dest_path}': {e}")
+            try:
+                if os.path.exists(dest_path):
+                    os.remove(dest_path)
+            except Exception:
+                pass
+        return False
+
+    def set_language(self, language):
+        if language not in self.SUPPORTED_LANGUAGES:
+            language = 'en'
+        if language in ('ru', 'en', 'uk'):
+            self.language = language
+            return True
+        if self.load_language(language):
+            self.language = language
+            return True
+        return False
 
     def tr(self, key, *args):
         translations = self.translations.get(self.language, self.translations.get('en', {}))
@@ -69,17 +236,25 @@ class Translation:
             'desc': (
                 "Инструмент для автоматической отправки заявки на Unlock\n"
                 "От: pktloss, New G3n\n"
-                "Версия: 8.1"
+                "Версия: 8.2"
             ),
             'desc_manual': (
                 "Ручной режим - выберите время отправки заявки вручную\n"
                 "От: pktloss, New G3n\n"
-                "Версия: 8.1"
+                "Версия: 8.2"
             ),
             'params': "Параметры",
             'tab_unlock': "Подача заявок",
             'tab_settings': "Настройки и инструкция",
+            'tab_hyperos1_bypass': "HyperOS 1 Bypass",
             'tab_mi_unlock': "Mi Unlock",
+            'hyperos1_bypass_title': "HyperOS 1 Bypass",
+            'hyperos1_bypass_desc': "Данная функция находится в разработке.\nОбход ограничений HyperOS 1 будет доступен в следующих обновлениях.",
+            'hyperos1_bypass_return_btn': "Вернуться к подаче заявок",
+            'beijing_time_title': "Пекинское время (UTC+8)",
+            'beijing_submission_hint': "Подача заявки осуществляется в 23:59:58 - 59 по Пекину",
+            'beijing_clock_collapse': "Свернуть",
+            'beijing_clock_expand': "Развернуть",
             'log_success_prefix': "УСПЕХ!",
             'log_code_message': "Код: {code} | Сообщение: {msg}",
             'log_request_parse_error': "[Ошибка обработки ответа] Не удалось распарсить JSON: {data}",
@@ -234,7 +409,7 @@ class Translation:
                 "Инструмент для автоматической отправки\n"
                 "заявки на разблокировку загрузчика\n"
                 "устройств Xiaomi на Global HyperOS\n\n"
-                "Версия скрипта: 8.1"
+                "Версия скрипта: 8.2"
             ),
             'general_title': "Требования",
             'general_content': (
@@ -341,7 +516,7 @@ https://t.me/miunlocktoolrevamp""",
 UQBCkvXTF-NiT7P8g0G-4oiAdsU81rMWJNYBTxDrbl76FabG
 USDT сеть TON
 
-Версия скрипта: 8.1""",
+Версия скрипта: 8.2""",
             'cookie_checkbox': "Отключить проверку Token Cookie перед отправкой",
             'final_unlock_checkbox': "Подача окончена. Попробуйте привязать телефон при любых результатах.",
             'ping_label': "Пинг по умолчанию (мс):",
@@ -350,7 +525,6 @@ USDT сеть TON
             'color_theme_red_sun': "Red Sun",
             'color_theme_blue_world': "Blue World",
             'save_btn': "Сохранить",
-            'close_btn': "Закрыть",
             'ping_error_title': "Ошибка",
             'ping_error_msg': "Пинг должен быть положительным числом!",
             'cookie_error_title': "Ошибка",
@@ -368,7 +542,6 @@ USDT сеть TON
             'script_info': "Инструкция и настройки скрипта",
             'exit': "Выход",
             'execution_log': "Лог выполнения",
-            'clear_log_btn': "Очистить",
             'unlock_process': "Начало процесса разблокировки...",
             'auto_mode': "Авто режим",
             'auto_mode_1': "Авторежим №1",
@@ -391,7 +564,6 @@ USDT сеть TON
             'collapse_cookies': "▼ Получение Cookies",
             'check_updates': "Проверить обновления",
             'update_available': "Доступно новое обновление",
-            'update_not_available': "Обновлений не найдено",
             'update_checking': "Проверка обновлений...",
             'update_error': "Ошибка при проверке обновлений",
             'current_version': "Текущая версия: {}",
@@ -426,7 +598,7 @@ USDT сеть TON
             'color_theme_red': "Red Sun",
             'language_label': "Язык",
             'log_to_txt_checkbox': "Логирование в TXT файле",
-            'animations_checkbox': "Анимации",
+            'animations_checkbox': "Анимации Интерфейса",
             'animations_development': "В разработке",
             'input_label': "Ввод",
             'application_status': "Статус заявок: {}",
@@ -463,7 +635,6 @@ USDT сеть TON
             'log_spam_parse_error': "[Спам #{}] Ошибка парсинга ответа: {}",
             'log_spam_no_response': "[Спам #{}] Нет ответа от сервера",
             'log_spam_send_error': "[Спам #{}] Ошибка отправки: {}",
-            'login_title': "Вход в аккаунт Xiaomi",
             'login_user_label': "ID аккаунта / Email / Телефон:",
             'login_user_placeholder': "Введите логин",
             'login_pwd_label': "Пароль:",
@@ -477,15 +648,12 @@ USDT сеть TON
             'login_disabled_notice': "Временно недоступно",
             'logging_in': "Вход...",
             'login_fields_error': "Заполните все поля (логин, пароль и ссылку)!",
-            'login_success': "Вход выполнен успешно! Токен получен.",
             'login_failed': "Ошибка входа",
             'login_failed_generic': "Ошибка входа. Проверьте данные.",
-            'login_token_extract_error': "Не удалось автоматически извлечь токен. Скопируйте его вручную с сайта c.mi.com/global.",
             'mi_unlock_title': "Mi Unlock Tool",
             'mi_unlock_checking_python': "Проверка наличия Python",
             'mi_unlock_upgrading': 'Установка обновления miunlock...',
             'mi_unlock_python_found': "Найден Python: {}",
-            'mi_unlock_python_not_found': "Python не найден!",
             'mi_unlock_python_error_msg': (
                 "Python не найден!\n\n"
                 "Для работы Mi Unlock Tool необходим Python 3.8 или выше.\n\n"
@@ -550,7 +718,7 @@ USDT сеть TON
             'mi_unlock_desc': (
                 "Инструмент для разблокировки при помощи Mi Unlock\n"
                 "От: pktloss, New G3n\n"
-                "Версия: 8.1"
+                "Версия: 8.2"
             ),
             'mi_unlock_python_not_found': "Python: не найден",
             'mi_unlock_python_found_label': "Python: {}",
@@ -560,6 +728,9 @@ USDT сеть TON
             'mi_unlock_process_interrupted': "Процесс прерван пользователем",
             'mi_unlock_log_title': "Лог выполнения",
             'mi_unlock_drivers_button': "Скачать драйверы",
+            'lang_download_title': "Скачивание языка",
+            'lang_download_msg': "Скачивание языкового пакета...",
+            'lang_download_failed': "Не удалось загрузить языковой пакет '{}'. Проверьте интернет-соединение.",
         }
 
     def get_english(self):
@@ -569,17 +740,25 @@ USDT сеть TON
             'desc': (
                 "Tool for automatic unlock request submission\n"
                 "By: pktloss, New G3n\n"
-                "Version: 8.1"
+                "Version: 8.2"
             ),
             'desc_manual': (
                 "Manual mode - select the time to submit manually\n"
                 "By: pktloss, New G3n\n"
-                "Version: 8.1"
+                "Version: 8.2"
             ),
             'params': "Parameters",
             'tab_unlock': "Submit Application",
             'tab_settings': "Settings and Instructions",
+            'tab_hyperos1_bypass': "HyperOS 1 Bypass",
             'tab_mi_unlock': "Mi Unlock",
+            'hyperos1_bypass_title': "HyperOS 1 Bypass",
+            'hyperos1_bypass_desc': "This feature is currently under development.\nHyperOS 1 Bypass will be available in future updates.",
+            'hyperos1_bypass_return_btn': "Back to Application Submission",
+            'beijing_time_title': "Beijing Time (UTC+8)",
+            'beijing_submission_hint': "Application is submitted at 23:59:58 - 59 Beijing time",
+            'beijing_clock_collapse': "Collapse",
+            'beijing_clock_expand': "Expand",
             'log_success_prefix': "SUCCESS!",
             'log_code_message': "Code: {code} | Message: {msg}",
             'log_request_parse_error': "[Response processing error] Failed to parse JSON: {data}",
@@ -734,7 +913,7 @@ USDT сеть TON
                 "Tool for automatic request send\n"
                 "for bootloader unlocking on\n"
                 "Xiaomi devices that runs HyperOS\n\n"
-                "Script version: 8.1"
+                "Script version: 8.2"
             ),
             'general_title': "Requirements",
             'general_content': (
@@ -841,7 +1020,7 @@ Donate to Development:
 UQBCkvXTF-NiT7P8g0G-4oiAdsU81rMWJNYBTxDrbl76FabG
 USDT TON network
 
-Script version: 8.1""",
+Script version: 8.2""",
             'cookie_checkbox': "Disable Token Cookie check before submission",
             'final_unlock_checkbox': "Submission is complete. Try binding the phone regardless of the result.",
             'ping_label': "Default ping (ms):",
@@ -850,7 +1029,6 @@ Script version: 8.1""",
             'color_theme_red_sun': "Red Sun",
             'color_theme_blue_world': "Blue World",
             'save_btn': "Save",
-            'close_btn': "Close",
             'ping_error_title': "Error",
             'ping_error_msg': "Ping must be a positive number.",
             'cookie_error_title': "Error",
@@ -868,7 +1046,6 @@ Script version: 8.1""",
             'script_info': "Instructions and Script Settings",
             'exit': "Exit",
             'execution_log': "Execution Log",
-            'clear_log_btn': "Clear",
             'unlock_process': "Starting unlock process...",
             'auto_mode': "Auto Mode",
             'auto_mode_1': "Auto Mode #1",
@@ -891,7 +1068,6 @@ Script version: 8.1""",
             'collapse_cookies': "▼ Getting Cookies",
             'check_updates': "Check for Updates",
             'update_available': "Update is available",
-            'update_not_available': "No updates found",
             'update_checking': "Checking for updates...",
             'update_error': "Error checking for updates",
             'current_version': "Current version: {}",
@@ -925,7 +1101,7 @@ Script version: 8.1""",
             'color_theme_red': "Red Sun",
             'language_label': "Language",
             'log_to_txt_checkbox': "Log to TXT file",
-            'animations_checkbox': "Animations",
+            'animations_checkbox': "Interface Animations",
             'animations_development': "In development",
             'input_label': "Input",
             'application_status': "Application status: {}",
@@ -962,7 +1138,6 @@ Script version: 8.1""",
             'log_spam_parse_error': "[Spam #{}] Error parsing response: {}",
             'log_spam_no_response': "[Spam #{}] No response from server",
             'log_spam_send_error': "[Spam #{}] Error sending request: {}",
-            'login_title': "Xiaomi Account Login",
             'login_user_label': "Mi Account ID / Email / Phone:",
             'login_user_placeholder': "Enter your login",
             'login_pwd_label': "Password:",
@@ -976,15 +1151,12 @@ Script version: 8.1""",
             'login_disabled_notice': "Temporarily unavailable",
             'logging_in': "Logging in...",
             'login_fields_error': "Fill in all fields (login, password, and link)!",
-            'login_success': "Login successful! Token obtained.",
             'login_failed': "Login failed",
             'login_failed_generic': "Login failed. Check your credentials.",
-            'login_token_extract_error': "Could not automatically extract token. Please copy it manually from c.mi.com/global.",
             'mi_unlock_title': "Mi Unlock Tool",
             'mi_unlock_checking_python': "Checking Python installation",
             'mi_unlock_upgrading': 'Upgrading miunlock...',
             'mi_unlock_python_found': "Python found: {}",
-            'mi_unlock_python_not_found': "Python not found!",
             'mi_unlock_python_error_msg': (
                 "Python not found!\n\n"
                 "Mi Unlock Tool requires Python 3.8 or higher.\n\n"
@@ -1049,7 +1221,7 @@ Script version: 8.1""",
             'mi_unlock_desc': (
                 "Tool for unlocking with Mi Unlock\n"
                 "By: pktloss, New G3n\n"
-                "Version: 8.1"
+                "Version: 8.2"
             ),
             'mi_unlock_python_not_found': "Python: not found",
             'mi_unlock_python_found_label': "Python: {}",
@@ -1059,2024 +1231,471 @@ Script version: 8.1""",
             'mi_unlock_process_interrupted': "Process interrupted by user",
             'mi_unlock_log_title': "Execution Log",
             'mi_unlock_drivers_button': "Download Drivers",
+            'lang_download_title': "Downloading Language",
+            'lang_download_msg': "Downloading language pack...",
+            'lang_download_failed': "Failed to download language pack '{}'. Please check your internet connection.",
         }
 
-    def get_indonesian(self):
-        return {
-            'title': "Xiaomi Unlock Tool",
-            'main_title': "Xiaomi Unlock Tool",
-            'desc': (
-                "Alat untuk pengajuan permintaan buka kunci otomatis\n"
-                "Oleh: pktloss, New G3n\n"
-                "Versi: 8.1"
-            ),
-            'desc_manual': (
-                "Mode manual - pilih waktu pengiriman secara manual\n"
-                "Oleh: pktloss, New G3n\n"
-                "Versi: 8.1"
-            ),
-            'params': "Parameter",
-            'tab_unlock': "Pengajuan Aplikasi",
-            'tab_settings': "Pengaturan dan Instruksi",
-            'tab_mi_unlock': "Mi Unlock",
-            'log_success_prefix': "SUKSES!",
-            'log_code_message': "Kode: {code} | Pesan: {msg}",
-            'log_request_parse_error': "[Kesalahan pemrosesan respons] Gagal mengurai JSON: {data}",
-            'log_request_failed_no_response': "[Kesalahan] Gagal mengirim permintaan (tidak ada respons)",
-            'log_request_exception': "[Kesalahan permintaan] {error}",
-            'cookie_label': "New_bbs_ServiceToken:",
-            'cookie_placeholder': "Tempel token Anda di sini...",
-            'timings_btn': "Pengaturan Waktu",
-            'timings_dialog_title': "Pengaturan Waktu",
-            'timings_desc': "Pilih waktu (offset dalam ms) untuk pengiriman otomatis pada 23:59:59:",
-            'timings_region_default': "Wilayah: Eropa (6 waktu dipilih secara default)",
-            'timings_min_warning': "Minimal harus memilih setidaknya 1 waktu pengiriman!",
-            'timings_risk_warning': "⚠️ Memilih terlalu banyak permintaan dapat menyebabkan penangguhan sementara pengiriman aplikasi, sedangkan memilih terlalu sedikit waktu pada saat yang salah dapat menyebabkan kegagalan pengiriman.",
-            'timings_count_label': "Dipilih: {} dari {}",
-            'timings_reset_btn': "Atur Ulang ke Default",
-            'timings_save_btn': "Simpan & Tutup",
-            'sections_menu': "Menu Bagian",
-            'profiles_btn': "Profil",
-            'profiles_title': "Profil Waktu",
-            'profile_europe': "Eropa",
-            'profile_asia': "Asia",
-            'profile_usa_africa': "AS / Afrika",
-            'color_picker_title': "Pilihan Warna Tema",
-            'color_picker_accept': "Terima",
-            'color_picker_cancel': "Tutup",
-            'color_picker_current': "Saat ini:",
-            'color_picker_selected': "Warna yang dipilih:",
-            'color_picker_palette': "Palet warna siap pakai:",
-            'color_picker_red': "Merah (R)",
-            'color_picker_green': "Hijau (G)",
-            'color_picker_blue': "Biru (B)",
-            'animations_coming_soon': "Animasi akan ditambahkan di masa mendatang",
-            'copy_address_btn': "📋 Salin",
-            'address_copied': "✓ Disalin!",
-            'timings_slots_title': "Konfigurasi 15 slot waktu (detik:ms):",
-            'login_btn': "Masuk ke Akun",
-            'check_eligibility_btn': "Periksa kelayakan",
-            'checking_eligibility': "Memeriksa kelayakan akun...",
-            'eligibility_eligible_title': "Pemeriksaan Kelayakan",
-            'login_title': "Otorisasi Akun Xiaomi",
-            'login_subtitle': "Pengambilan New_bbs_serviceToken otomatis",
-            'login_tab_qr': "Kode QR / Browser",
-            'login_tab_existing': "Akun Tersimpan",
-            'login_existing_found': "Sesi Akun Mi tersimpan terdeteksi",
-            'login_existing_id': "ID Akun: {}",
-            'login_use_existing_btn': "⚡ Gunakan akun ini",
-            'login_qr_scan_tip': "Pindai kode QR di aplikasi Mi Community\natau dengan kamera ponsel Xiaomi Anda",
-            'login_open_browser_btn': "🌐 Masuk dengan Browser",
-            'login_refresh_qr': "🔄 Perbarui Kode QR",
-            'login_waiting': "Menunggu konfirmasi otorisasi...",
-            'login_qr_expired': "Kode QR kedaluwarsa. Klik 'Perbarui Kode QR'.",
-            'login_loading_qr': "⏳ Memuat kode QR...",
-            'login_browser_opened': "Halaman login dibuka di browser. Menunggu penyelesaian...",
-            'login_refreshing_qr': "Memperbarui kode QR...",
-            'login_qr_fetch_error': "Gagal memuat kode QR: {}",
-            'login_authorized_extracting': "Otorisasi dikonfirmasi! Mengekstrak token...",
-            'login_extracting_token': "Mengekstrak token...",
-            'login_session_expired': "Sesi telah berakhir",
-            'login_success': "Otorisasi berhasil! new_bbs_serviceToken diperoleh.",
-            'login_error': "Kesalahan otorisasi: {}",
-            'login_token_extract_error': "Gagal mengekstrak token dari respons server.",
-            'close_btn': "Tutup",
-            'log_token_check_success': "Pemeriksaan token dan status berhasil diselesaikan.",
-            'log_token_check_skipped': "Peringatan: verifikasi token dinonaktifkan di pengaturan, melanjutkan...",
-            'log_mode2_selected': "Mode Otomatis #2 dipilih (spam HTTP menuju 23:59:59)",
-            'log_mode2_ntp_saved': "Mode Otomatis #2: Sinkronisasi NTP tersimpan, mode tanpa pengukuran ping",
-            'status_mode2_waiting': "Mode Otomatis #2: menunggu 23:59:59",
-            'log_mode2_beijing_reached': "Mode Otomatis #2: waktu Beijing 23:59:59 tercapai",
-            'status_mode2_sending': "Mode Otomatis #2: mengirim paket HTTP",
-            'mode2_prefix': "Mode Otomatis #2",
-            'mode2_timing': "penentuan waktu",
-            'log_mode2_plan_sent': "Rencana spam HTTP dikirim",
-            'mode2_using_device_id': "[Mode Otomatis #2 HTTP #{}] Menggunakan device_id: {}",
-            'request_prefix': "Permintaan",
-            'req_using_device_id': "[Permintaan #{}] Menggunakan device_id: {}",
-            'log_ping_start_http_tcp': "Memulai pengukuran ping HTTP dan TCP...",
-            'log_ping_avg_http': "Rata-rata ping HTTP: {:.2f} ms",
-            'log_ping_http_failed': "Gagal mengukur ping HTTP",
-            'log_ping_avg_tcp': "Rata-rata ping TCP: {:.2f} ms",
-            'log_ping_tcp_failed': "Gagal mengukur ping TCP",
-            'status_get_failed': "[Kesalahan] Gagal mendapatkan status buka kunci.",
-            'status_app_approved_checking': "[Status] Pengajuan disetujui, memeriksa status...",
-            'status_app_rejected_100001': "[Status] Pengajuan ditolak, kesalahan permintaan (kode 100001).",
-            'status_app_possibly_approved': "[Status] Pengajuan kemungkinan disetujui, memeriksa status...",
-            'success_dialog_title': "Berhasil!",
-            'success_dialog_message': "Berhasil! Coba tautkan akun Anda.",
-            'theme_dark_only': "Tema gelap (hanya tema gelap yang tersedia)",
-            'confirm': "Saya menyadari risiko kemungkinan pemblokiran akun",
-            'info': "Informasi",
-            'status_ready': "Siap memulai",
-            'ping': "Ping: tidak diukur",
-            'time': "Waktu: tidak disinkronkan",
-            'start_btn': "Mulai Aplikasi",
-            'instructions_btn': "Instruksi dan Pengaturan Skrip",
-            'exit_btn': "Keluar",
-            'log': "Log Eksekusi",
-            'clear_log_btn': "Bersihkan",
-            'unlock_start': "Memulai proses buka kunci...",
-            'device_id_gen': "DeviceId yang dihasilkan: {}",
-            'ping_start': "Memulai perhitungan ping...",
-            'ping_server': "Ping ke {}: {:.2f} ms",
-            'ping_failed': "Gagal mendapatkan ping server {}",
-            'ping_error': "Kesalahan ping {}: {}",
-            'open_miflash': "MiFlash Unlock",
-            'social_telegram': "Telegram",
-            'social_reddit': "Reddit",
-            'social_github': "GitHub",
-            'social_site_script': "Situs Skrip",
-            'theme_color_label': 'Warna tema',
-            'theme_color_picker': 'Pilih warna',
-            'theme_color_apply': 'Terapkan',
-            'theme_color_hint': 'Masukkan HEX (#RRGGBB) atau RGB (R,G,B)',
-            'theme_color_error_title': 'Kesalahan warna',
-            'theme_color_error': 'Masukkan HEX (#RRGGBB) atau RGB (R,G,B) yang valid.',
-            'theme_color_placeholder': '#D0BCFF',
-            'social_telegram': "Telegram",
-            'social_reddit': "Reddit",
-            'social_github': "GitHub",
-            'social_site_script': "Situs Skrip",
-            'theme_color_label': 'Warna tema',
-            'theme_color_picker': 'Pilih warna',
-            'theme_color_apply': 'Terapkan',
-            'theme_color_hint': 'Masukkan HEX (#RRGGBB) atau RGB (R,G,B)',
-            'theme_color_error_title': 'Kesalahan warna',
-            'theme_color_error': 'Masukkan HEX (#RRGGBB) atau RGB (R,G,B) yang valid.',
-            'theme_color_placeholder': '#D0BCFF',
-            'ping_default': "Gagal mendapatkan ping server!\nMenggunakan nilai default: {} ms",
-            'ping_avg': "Rata-rata ping: {:.2f} ms",
-            'ntp_connect': "Mencoba terhubung ke server NTP: {}",
-            'ntp_time': "Waktu Beijing diterima dari server {}: {}",
-            'ntp_failed': "Gagal terhubung ke server NTP mana pun.",
-            'time_wait': "Menunggu waktu ping (23:59:30 waktu Beijing)...",
-            'target_time': "Menunggu hingga {} (disesuaikan dengan ping {} ms untuk mencapai tengah malam)",
-            'target_time_manual': "Menunggu hingga {} (mode manual)",
-            'time_reached': "Waktu tercapai: {}. Memulai pengiriman permintaan...",
-            'cookie_skipped': "Pemeriksaan cookie dilewati sesuai pengaturan",
-            'cookie_expired': "Cookie kedaluwarsa, harap perbarui",
-            'account_ready': "[Status] Akun dapat mengirim permintaan buka kunci.",
-            'account_blocked': "[Status] Akun diblokir hingga {} (Bulan/Hari).",
-            'account_new': "[Status] Akun dibuat kurang dari 30 hari yang lalu.",
-            'account_approved': "[Status] Aplikasi disetujui, buka kunci hingga {}.",
-            'account_unknown': "[Kesalahan] Status tidak dikenal.",
-            'status_error': "[Kesalahan pemeriksaan status] {}",
-            'request_sent': "\nMengirim permintaan pada {} (UTC+8)",
-            'response_received': "Respons diterima pada {} (UTC+8)",
-            'update_not_available': "Tidak ada pembaruan",
-            'update_check_error': "Kesalahan saat memeriksa pembaruan",
-            'request_failed': "[Kesalahan] Gagal mengirim permintaan",
-            'response_error': "[Kesalahan pemrosesan respons] {}",
-            'request_error': "[Kesalahan permintaan] {}",
-            'confirm_warning': "Harap konfirmasi bahwa Anda memahami semua risiko!",
-            'cookie_error': "Masukkan nilai cookie!",
-            'token_status_check_failed': "Kesalahan: pemeriksaan token/status gagal. Pengiriman dibatalkan. Nonaktifkan 'Nonaktifkan pemeriksaan Token Cookie sebelum pengiriman' jika Anda ingin melewati pemeriksaan.",
-            'time_error': "Gagal menyinkronkan waktu!",
-            'settings_saved': "\nPengaturan disimpan:",
-            'cookie_check': "Pemeriksaan Token Cookie: {}",
-            'default_ping': "Ping default: {} ms",
-            'ping_note': "Nilai ini akan digunakan jika pengukuran ping ke server gagal.",
-            'saved': "Pengaturan berhasil disimpan!",
-            'instructions_title': "Instruksi dan Pengaturan Skrip",
-            'about_title': "Tentang",
-            'about_content': (
-                "Alat untuk pengiriman permintaan otomatis\n"
-                "untuk membuka kunci bootloader pada\n"
-                "perangkat Xiaomi yang menjalankan HyperOS\n\n"
-                "Versi skrip: 8.1"
-            ),
-            'general_title': "Persyaratan",
-            'general_content': (
-                "1. Akun Mi harus lebih dari 30 hari\n \n"
-                "2. Akun Mi Community harus memiliki\n \n"
-                "region Global\n \n"
-                "3. Buka kunci tersedia untuk semua perangkat\n"
-                "kecuali ROM China (CNXM)\n \n"
-                "4. Perangkat menjalankan HyperOS"
-            ),
-            'firefox_title': "FireFox | Edge",
-            'firefox_content': (
-                "1. Unduh ekstensi Cookie Editor\n\n"
-                "2. Masuk ke akun Anda (setelah keluar)\n"
-                "di situs Xiaomi Mi Community:\n\n"
-                "http://c.mi.com/global\n"
-                "atau \n"
-                "http://mi.com\n\n"
-                "3. Di jendela Cookie Editor, ekstrak\n"
-                "new_bbs_token dan salin\n\n"
-                "Catatan penting:\n \n"
-                "1. Semua waktu dalam skrip adalah waktu Beijing"
-            ),
-            'chrome_title': "Chrome",
-            'chrome_content': (
-                "1. Masuk ke akun Anda (setelah keluar)\n"
-                "di situs Xiaomi Mi Community:\n"
-                "https://c.mi.com/global\n"
-                "atau \n"
-                "https://mi.com\n\n"
-                "2. Di bilah alamat browser, masukkan perintah:\n\n"
-                "javascript :(function(){var token=document.cookie.match(/popRunToken=([^;]+)/);"
-                "if(token){prompt(\"Salin token:\", token[1]);}"
-                "else{alert(\"Token tidak ditemukan\");}})()\n\n"
-                "*ingat untuk menghapus spasi setelah javascript saat menempelkan perintah ke bilah alamat browser*\n\n"
-                "3. Salin nilai token dari jendela popup\n\n"
-                "Catatan penting:\n \n"
-                "1. Semua waktu dalam skrip adalah waktu Beijing"
-            ),
-            'trouble_title': "Pemecahan Masalah",
-            'trouble_content': """Masalah: CookieEditor tidak menampilkan new_bbs_serviceToken
+    def get_ukrainian(self):
+        return {           'about_content': 'Xiaomi Unlock Tool — це комплексний інструмент для автоматизації надсилання заявок на '
+                                     'розблокування завантажувача (Bootloader) пристроїв Xiaomi, Redmi та POCO.\n'
+                                     '\n'
+                                     'Основні можливості:\n'
+                                     '• Точна мікросекундна синхронізація часу з серверами Пекіна (UTC+8).\n'
+                                     '• Гнучке налаштування профілів таймінгів для Європи, Азії та інших регіонів.\n'
+                                     '• Вбудована перевірка придатності акаунта та авторизація за QR-кодом.\n'
+                                     '• Підтримка темної теми Material 3 з можливістю налаштування акцентного кольору.\n'
+                                     '• Вбудований інструмент Mi Unlock для швидкого розблокування.',
+                    'about_title': 'Про програму',
+                    'account_approved': 'Заявку вже схвалено! Дійсна до: {}',
+                    'account_approved_title': 'Успіх',
+                    'account_blocked': 'Акаунт заблоковано до: {}',
+                    'account_blocked_title': 'Інформація',
+                    'account_new': '[Статус] Акаунт створено менше ніж 30 днів тому.',
+                    'account_new_title': 'Інформація',
+                    'account_ready': 'Акаунт готовий до розблокування!',
+                    'account_unknown': '[Помилка] Невідомий статус.',
+                    'address_copied': '✓ Скопійовано!',
+                    'animations_checkbox': 'Увімкнути плавні анімації інтерфейсу',
+                    'animations_coming_soon': 'Анімації будуть додані в майбутньому',
+                    'animations_development': 'Анімації оптимізовані для темної теми.',
+                    'application_not_submitted': 'Заявку не подано. Ліміт квоти вичерпано на сьогодні. Наступна спроба: {}',
+                    'application_status': 'Статус заявки:',
+                    'application_status_failed': 'Відхилено',
+                    'application_status_not_sent': 'Не надіслано',
+                    'application_status_sending': 'Надсилання...',
+                    'application_status_success': 'Схвалено!',
+                    'application_status_unknown': 'Невідомо',
+                    'authors_base_script': 'Оригінальний базовий скрипт:',
+                    'authors_content': 'Розробники та подяки:\n'
+                                       '• Основний розробник ПК-версії: Franz\n'
+                                       '• Автори оригінального інструменту: pktloss, New G3n\n'
+                                       '• HyperOS BootLoader Bypass: MlgmXyysd (NekoYuzu) / MeowCat Studio\n'
+                                       '\n'
+                                       'Дякуємо всім тестувальникам та користувачам спільноти!',
+                    'authors_crypto_network': 'Мережа USDT: TON',
+                    'authors_developers_title': 'Розробники',
+                    'authors_donate_btn': 'Підтримати розробку',
+                    'authors_donate_title': 'Підтримка проєкту:',
+                    'authors_pc_cli_dev': 'Розробник версії для ПК та CLI:',
+                    'authors_social_links': 'Корисні посилання та соцмережі:',
+                    'authors_title': 'Автори',
+                    'authors_web_android_dev': 'Розробник Web та Android версій:',
+                    'auto_mode': 'Авто режим',
+                    'auto_mode_1': 'Авто режим 1 (спам)',
+                    'auto_mode_2': 'Авто режим 2 (розклад)',
+                    'ban_risk': 'Ризик блокування: {}',
+                    'beijing_clock_collapse': 'Згорнути',
+                    'beijing_clock_expand': 'Розгорнути',
+                    'beijing_submission_hint': 'Подання заявки здійснюється о 23:59:58 - 59 за Пекіном',
+                    'beijing_time_title': 'Пекінський час (UTC+8)',
+                    'bypass_adb_not_found': 'ADB не знайдено',
+                    'bypass_adb_ready': 'ADB готовий до роботи',
+                    'bypass_adb_searching': 'Пошук ADB пристрою...',
+                    'bypass_args_captured': 'Параметри запиту (args) успішно перехоплено!',
+                    'bypass_cancelled': 'Операцію скасовано користувачем.',
+                    'bypass_capture_failed': 'Не вдалося перехопити дані пристрою.',
+                    'bypass_clear_log': 'Очистити',
+                    'bypass_click_add_device': 'Будь ласка, перейдіть до: Для розробників -> Стан Mi Unlock та натисніть '
+                                               "'Пов'язати акаунт із пристроєм'!",
+                    'bypass_code_credentials_expired': 'Сесія акаунта закінчилася (401). Перезайдіть у Mi акаунт на телефоні.',
+                    'bypass_code_device_cred_expired': 'Облікові дані пристрою закінчилися (20086).',
+                    'bypass_code_invalid_signature': 'Недійсний підпис пристрою (86015).',
+                    'bypass_code_success': "Успішно! Пристрій прив'язано.",
+                    'bypass_code_verification_forced': 'Xiaomi примусово вимагає перевірку прав акаунта (30001).',
+                    'bypass_cookie_extracted': 'Кукі авторизації вилучено',
+                    'bypass_data_disabled': 'Мобільний інтернет тимчасово вимкнено для перехоплення.',
+                    'bypass_data_enabled': 'Мобільний інтернет увімкнено.',
+                    'bypass_data_encrypted': 'Модифіковані дані зашифровано.',
+                    'bypass_decrypt_error': 'Помилка розшифрування даних',
+                    'bypass_decrypted_ok': 'Дані успішно розшифровано.',
+                    'bypass_dev_settings_opened': 'Відкрито налаштування для розробників на телефоні.',
+                    'bypass_device_serial': 'Серійний номер пристрою',
+                    'bypass_error': 'Помилка',
+                    'bypass_headers_captured': 'Заголовки запиту (headers) успішно перехоплено!',
+                    'bypass_headers_decrypt_error': 'Помилка розшифрування заголовків',
+                    'bypass_log_title': 'Журнал обходу',
+                    'bypass_multiple_devices': 'Підключено кілька пристроїв. Залиште лише один',
+                    'bypass_no_cookie': 'Увага: Cookie не знайдено в заголовках.',
+                    'bypass_no_device': 'Пристрій не виявлено. Підключіть телефон з увімкненим налагодженням по USB',
+                    'bypass_panel_title': 'HyperOS 1 BootLoader Bypass',
+                    'bypass_refresh_btn': 'Оновити ADB',
+                    'bypass_region_label': 'Регіон прошивки:',
+                    'bypass_request_failed': 'Помилка відправки HTTP запиту',
+                    'bypass_response': 'Відповідь сервера',
+                    'bypass_signature': 'Сформовано HMAC-SHA1 підпис',
+                    'bypass_start_btn': 'Запустити обхід',
+                    'bypass_step1': 'Перевірка пристрою',
+                    'bypass_step1_checking': 'Крок 1: Перевірка підключеного пристрою...',
+                    'bypass_step2': 'Підготовка та налаштування',
+                    'bypass_step2_prep': 'Крок 2: Увімкнення мобільних даних та відкриття налаштувань...',
+                    'bypass_step3': 'Перехоплення запиту',
+                    'bypass_step3_waiting': "Крок 3: Очікування натискання 'Пов'язати акаунт із пристроєм'...",
+                    'bypass_step4': 'Модифікація параметрів',
+                    'bypass_step4_patching': 'Крок 4: Розшифрування, модифікація версії ROM та підпис...',
+                    'bypass_step5': 'Відправка в Xiaomi',
+                    'bypass_step5_sending': 'Крок 5: Відправка сформованого запиту на сервер Xiaomi...',
+                    'bypass_stop_btn': 'Зупинити',
+                    'bypass_success': "УСПІХ! Пристрій успішно прив'язано в обхід обмежень HyperOS!",
+                    'check_eligibility_btn': 'Перевірити придатність',
+                    'check_updates': 'Перевірити оновлення',
+                    'checking_eligibility': 'Перевірка придатності акаунта...',
+                    'chrome_content': '1. Відкрийте Chrome або Edge і перейдіть на community.mi.com.\n'
+                                      '2. Авторизуйтесь під своїм обліковим записом Xiaomi.\n'
+                                      '3. Натисніть F12, перейдіть на вкладку «Application» (Застосунок) -> «Cookies».\n'
+                                      '4. Оберіть домен `mi.com` і знайдіть параметр `passToken` / `serviceToken`.\n'
+                                      '5. Скопіюйте значення параметра та вставте в поле скрипта.',
+                    'chrome_title': 'Отримання токена у Chrome / Edge',
+                    'clear_log_btn': 'Очистити',
+                    'close_btn': 'Закрити',
+                    'collapse_cookies': 'Згорнути налаштування cookies',
+                    'color_picker_accept': 'Застосувати',
+                    'color_picker_blue': 'Синій (B)',
+                    'color_picker_cancel': 'Закрити',
+                    'color_picker_current': 'Поточний:',
+                    'color_picker_green': 'Зелений (G)',
+                    'color_picker_palette': 'Палітра готових кольорів:',
+                    'color_picker_red': 'Червоний (R)',
+                    'color_picker_selected': 'Обраний колір:',
+                    'color_picker_title': 'Вибір кольору теми',
+                    'color_theme_blue': 'Матеріальний Синій',
+                    'color_theme_blue_world': 'Blue World',
+                    'color_theme_label': 'Колірна тема інтерфейсу:',
+                    'color_theme_red': 'Червоне Сонце',
+                    'color_theme_red_sun': 'Red Sun',
+                    'color_theme_xiaomi': 'Xiaomi Помаранчевий',
+                    'color_theme_xiaomi_orange': 'Xiaomi Orange',
+                    'confirm': 'Підтвердження',
+                    'confirm_warning': 'Увага! Перевірте правильність введених даних.',
+                    'cookie_check': 'Перевірка Token Cookie: {}',
+                    'cookie_check_state': 'Перевірка токена: {}',
+                    'cookie_checkbox': 'Вимкнути перевірку Token Cookie перед надсиланням',
+                    'cookie_error': 'Будь ласка, введіть валідний Token Cookie перед початком!',
+                    'cookie_error_title': 'Помилка',
+                    'cookie_expired': 'Термін дії Token Cookie вичерпано. Будь ласка, отримайте новий токен.',
+                    'cookie_label': 'New_bbs_ServiceToken:',
+                    'cookie_placeholder': 'Вставте ваш токен сюди...',
+                    'cookie_skipped': 'Перевірку токена пропущено.',
+                    'cookies_title': 'Налаштування Cookies',
+                    'copy_address_btn': '📋 Скопіювати',
+                    'current_version': 'Поточна версія: {}',
+                    'default': 'за замовчуванням',
+                    'default_ping': 'Пінг за замовчуванням: {} мс',
+                    'desc': 'Скрипт для автоматичного надсилання заявок на розблокування\nАвтор: pktloss, New G3n\nВерсія: 8.2',
+                    'desc_manual': 'Ручний режим - оберіть час надсилання вручну\nАвтор: pktloss, New G3n\nВерсія: 8.2',
+                    'device_binding_hint': "Підказка: після схвалення зв'яжіть акаунт у меню для розробників на телефоні.",
+                    'device_id_gen': 'Згенеровано Device ID: {}',
+                    'eligibility_eligible_title': 'Акаунт придатний!',
+                    'error_title': 'Помилка',
+                    'execution_log': 'Журнал виконання',
+                    'exit': 'Вихід',
+                    'exit_btn': 'Вихід',
+                    'expand_cookies': 'Розгорнути налаштування cookies',
+                    'final_unlock_checkbox': "Подання завершено. Спробуйте прив'язати телефон за будь-яких результатів.",
+                    'firefox_content': '1. Відкрийте браузер Firefox і перейдіть на сайт community.mi.com.\n'
+                                       '2. Увійдіть у свій Mi Account.\n'
+                                       '3. Натисніть F12 для відкриття інструментів розробника та перейдіть на вкладку '
+                                       '«Сховище» -> «Куки».\n'
+                                       '4. Знайдіть кукі з назвою `passToken` або `serviceToken` (New_bbs_ServiceToken).\n'
+                                       '5. Скопіюйте значення та вставте його у відповідне поле скрипта.',
+                    'firefox_title': 'Отримання токена у Firefox',
+                    'general_content': "1. Увійдіть у свій Mi Account на пристрої та прив'яжіть номер телефону.\n"
+                                       '2. Отримайте Token Cookie (New_bbs_ServiceToken) через вхід за QR-кодом або браузер.\n'
+                                       '3. Вставте токен у поле програми та натисніть «Перевірити придатність».\n'
+                                       '4. Оберіть режим роботи (Авто режим 2 або Ручний режим).\n'
+                                       '5. Натисніть кнопку «Подати заявку» перед настанням 00:00:00 за Пекінським часом.\n'
+                                       '6. Скрипт автоматично надішле запити в найточніший момент із урахуванням таймінгів.',
+                    'general_title': 'Загальна інструкція',
+                    'header_region': 'Регіон: {}',
+                    'http_ping_label': 'HTTP пінг: {} мс',
+                    'http_request': 'HTTP запит...',
+                    'http_request_log': 'HTTP пінг: {} мс',
+                    'hyperos1_bypass_desc': "Обхід обмежень спільноти HyperOS 1 для прив'язки облікового запису.",
+                    'hyperos1_bypass_return_btn': 'Повернутися до подання заявок',
+                    'hyperos1_bypass_title': 'HyperOS 1 Bypass',
+                    'import_error': 'Помилка імпорту',
+                    'info': 'Інформація',
+                    'input_label': 'Введіть параметри:',
+                    'install_error': 'Помилка встановлення',
+                    'instructions_btn': 'Інструкції',
+                    'instructions_title': 'Інструкції',
+                    'lang_download_failed': 'Не вдалося завантажити мовний пакет ({}). Встановлено англійську мову.',
+                    'lang_download_msg': 'Завантаження мовного пакета ({}) з сервера...',
+                    'lang_download_title': 'Завантаження мовного пакета',
+                    'language_label': 'Мова інтерфейсу:',
+                    'latest_version': 'Остання версія: {}',
+                    'log': 'Журнал',
+                    'log_auto_mode_single_selected': '[Режим] Обрано режим одиночного надсилання.',
+                    'log_auto_mode_spam_selected': '[Режим] Обрано режим серійного надсилання.',
+                    'log_calculated_send_time': '[Розрахунок] Час старту відправки: {}',
+                    'log_code_message': 'Код: {code} | Повідомлення: {msg}',
+                    'log_manual_mode_selected': '[Режим] Обрано ручний режим.',
+                    'log_measuring_ping': 'Вимірювання пінгу до серверів Xiaomi...',
+                    'log_mode2_beijing_reached': '[Розклад] Досягнуто часу початку відправки.',
+                    'log_mode2_ntp_saved': '[NTP] Час синхронізовано з сервером.',
+                    'log_mode2_plan_sent': '[План] Усі заплановані запити надіслано.',
+                    'log_mode2_selected': '[Авто режим] Активовано режим за розкладом.',
+                    'log_normal_mode_ping': '[Пінг] Застосовано значення: {} мс',
+                    'log_ping_avg_http': 'Середній HTTP пінг: {:.2f} мс',
+                    'log_ping_avg_tcp': 'Середній TCP пінг: {:.2f} мс',
+                    'log_ping_http_failed': 'Не вдалося виміряти HTTP пінг.',
+                    'log_ping_measured': '[Пінг] Вимірювання успішно завершено.',
+                    'log_ping_start': '[Пінг] Початок тестових запитів...',
+                    'log_ping_start_http_tcp': 'Вимірювання затримки HTTP та TCP...',
+                    'log_ping_tcp_failed': 'Не вдалося виміряти TCP пінг.',
+                    'log_ping_time_passed': '[Пінг] Час вимірювання вже настав.',
+                    'log_ping_wait': '[Очікування] Очікування часу початку вимірювання затримки...',
+                    'log_request_exception': '[Помилка запиту] {error}',
+                    'log_request_failed_no_response': '[Помилка] Не вдалося надіслати запит (відповідь відсутня)',
+                    'log_request_parse_error': '[Помилка обробки відповіді] Не вдалося розібрати JSON: {data}',
+                    'log_resync_error': '[Помилка] Не вдалося повторно синхронізувати час.',
+                    'log_spam_mode_targets': '[Серія] Кількість цільових запитів: {}',
+                    'log_spam_new_device_id': '[Серія] Новий Device ID: {}',
+                    'log_spam_no_response': '[Серія #{}] Відповідь відсутня.',
+                    'log_spam_parse_error': '[Серія #{}] Помилка розбору JSON: {}',
+                    'log_spam_response_format': '[Серія #{}] Код: {} | Повідомлення: {}',
+                    'log_spam_response_prefix': '[Серія #{}] Відповідь: {}',
+                    'log_spam_send_error': '[Серія #{}] Помилка надсилання: {}',
+                    'log_spam_sending_at': '[Серія] Відправка #{}: {}',
+                    'log_spam_success_prefix': '[Серія #{}] УСПІХ!',
+                    'log_success_prefix': 'УСПІХ!',
+                    'log_time_gt_2355': '[Час] Поточний час після 23:55, запити заплановано на сьогодні.',
+                    'log_time_sync_success': '[Синхронізація] Точний час успішно скориговано.',
+                    'log_time_updated': '[Час] Дані часу оновлено.',
+                    'log_to_txt_checkbox': 'Записувати журнал у текстовий файл (.txt)',
+                    'log_token_check_skipped': '[Перевірка] Перевірку Token Cookie пропущено користувачем.',
+                    'log_token_check_success': '[Перевірка] Token Cookie валідний та готовий до роботи.',
+                    'logging_in': 'Виконується авторизація...',
+                    'login_authorized_extracting': 'Успішно авторизовано! Отримання токена...',
+                    'login_browser_opened': 'Сторінку авторизації відкрито в браузері.',
+                    'login_btn': 'Увійти в акаунт',
+                    'login_button': 'Авторизуватися',
+                    'login_disabled_notice': 'Прямий вхід за паролем тимчасово обмежено захистом Xiaomi. Рекомендується вхід '
+                                             'за QR-кодом.',
+                    'login_error': 'Помилка входу: {}',
+                    'login_existing_found': 'Знайдено збережену сесію:',
+                    'login_existing_id': 'Xiaomi ID: {}',
+                    'login_extracting_token': 'Отримання токена...',
+                    'login_failed': 'Помилка авторизації. Перевірте логін і пароль.',
+                    'login_failed_generic': 'Не вдалося виконати вхід. Спробуйте вхід за QR-кодом.',
+                    'login_fields_error': 'Будь ласка, заповніть усі поля логіна та пароля!',
+                    'login_loading_qr': 'Завантаження QR-коду...',
+                    'login_open_browser_btn': 'Відкрити в браузері',
+                    'login_pwd_label': 'Пароль:',
+                    'login_pwd_placeholder': 'Введіть пароль...',
+                    'login_qr_expired': 'Час дії коду вичерпано. Оновіть QR-код.',
+                    'login_qr_fetch_error': 'Помилка завантаження QR-коду: {}',
+                    'login_qr_scan_tip': 'Відскануйте QR-код за допомогою камери або програми Mi Home / Сканер',
+                    'login_refresh_qr': 'Оновити код',
+                    'login_refreshing_qr': 'Оновлення QR-коду...',
+                    'login_session_expired': 'Час очікування авторизації вичерпано.',
+                    'login_subtitle': 'Швидкий вхід за QR-кодом або використання збереженого токена',
+                    'login_success': 'Вхід виконано успішно!',
+                    'login_tab_existing': 'Збережений акаунт',
+                    'login_tab_qr': 'Вхід за QR-кодом',
+                    'login_title': 'Вхід до Mi Account',
+                    'login_token_extract_error': 'Не вдалося витягти токен після авторизації.',
+                    'login_use_existing_btn': 'Використати цей токен',
+                    'login_user_label': "Ім'я користувача / Email / Телефон:",
+                    'login_user_placeholder': 'Введіть логін...',
+                    'login_waiting': 'Очікування сканування...',
+                    'logs_send_error': 'Помилка збереження журналу: {}',
+                    'logs_sent': 'Журнал успішно збережено.',
+                    'main_title': 'Xiaomi Unlock Tool',
+                    'manual_mode': 'Ручний режим',
+                    'manual_mode_start': 'Запуск у ручному режимі з цільовим часом: {} сек',
+                    'manual_time_error': 'Введіть коректне значення секунд (0-60)!',
+                    'manual_time_hint': 'Введіть секунди для відправки (наприклад, 59.1)',
+                    'manual_time_label': 'Час надсилання:',
+                    'measuring_pings': 'Вимірювання пінгу...',
+                    'mi_unlock_already_installed': 'Усі компоненти вже встановлені.',
+                    'mi_unlock_auto_send_error': 'Помилка авто-підтвердження: {}',
+                    'mi_unlock_auto_send_final': 'Фінальне підтвердження надіслано.',
+                    'mi_unlock_auto_sending': 'Автоматичне надсилання підтвердження...',
+                    'mi_unlock_checking_python': 'Перевірка наявності Python...',
+                    'mi_unlock_close': 'Закрити',
+                    'mi_unlock_completed': 'Процес Mi Unlock завершено.',
+                    'mi_unlock_critical_error': 'Критична помилка Mi Unlock: {}',
+                    'mi_unlock_desc': 'Офіційне розблокування завантажувача через fastboot після отримання схвалення.',
+                    'mi_unlock_drivers_button': 'Встановити драйвери',
+                    'mi_unlock_error': 'Помилка Mi Unlock: {}',
+                    'mi_unlock_file_not_found': 'Виконуваний файл не знайдено: {}',
+                    'mi_unlock_finished': 'Роботу завершено.',
+                    'mi_unlock_initial_enter': 'Надсилання початкового підтвердження...',
+                    'mi_unlock_input_error': 'Помилка передачі вхідних даних: {}',
+                    'mi_unlock_input_label': 'Введення команди:',
+                    'mi_unlock_input_placeholder': 'Введіть команду або дані...',
+                    'mi_unlock_input_prefix': '[Введення]: {}',
+                    'mi_unlock_install_cmd': 'Виконання команди: {}',
+                    'mi_unlock_install_error': 'Помилка встановлення компонентів: {}',
+                    'mi_unlock_install_success': 'Компоненти успішно встановлено!',
+                    'mi_unlock_installing': 'Встановлення необхідних компонентів...',
+                    'mi_unlock_label': 'Mi Unlock',
+                    'mi_unlock_launching': 'Запуск Mi Unlock Tool...',
+                    'mi_unlock_log_title': 'Журнал Mi Unlock',
+                    'mi_unlock_not_found': 'Mi Unlock не знайдено.',
+                    'mi_unlock_package_installed': 'Усі необхідні пакунки встановлено.',
+                    'mi_unlock_package_not_installed': 'Необхідні пакунки не встановлено.',
+                    'mi_unlock_process_exit': 'Процес завершився з кодом: {}',
+                    'mi_unlock_process_interrupted': 'Процес перервано користувачем.',
+                    'mi_unlock_python_error_msg': 'Помилка перевірки середовища Python: {}',
+                    'mi_unlock_python_found': 'Python знайдено: {}',
+                    'mi_unlock_python_found_label': 'Середовище Python виявлено.',
+                    'mi_unlock_python_not_found': 'Python не знайдено в системі.',
+                    'mi_unlock_read_error': 'Помилка читання потоку: {}',
+                    'mi_unlock_send_btn': 'Надіслати',
+                    'mi_unlock_start_button': 'Запустити Mi Unlock',
+                    'mi_unlock_starting': 'Запуск процесу Mi Unlock...',
+                    'mi_unlock_stderr_error': 'Помилка читання виводу помилок: {}',
+                    'mi_unlock_stdout_error': 'Помилка читання стандартного виводу: {}',
+                    'mi_unlock_title': 'Mi Unlock Tool',
+                    'mi_unlock_upgrading': 'Оновлення компонентів...',
+                    'mode2_prefix': '[Авто режим]',
+                    'mode2_timing': 'таймінг',
+                    'mode2_using_device_id': '[Авто режим] #{}: Device ID={}',
+                    'mode_label': 'Режим роботи:',
+                    'ms': 'мс',
+                    'ntp_connect': 'Підключення до сервера часу: {}',
+                    'ntp_failed': 'Не вдалося підключитися до жодного з NTP серверів.',
+                    'ntp_time': 'Пекінський час, отриманий від сервера {}: {}',
+                    'open_confirmation_page': 'Відкрити сторінку підтвердження',
+                    'open_miflash': 'Відкрити MiFlash Unlock',
+                    'params': 'Параметри',
+                    'ping': 'Пінг',
+                    'ping_avg': 'Середній пінг: {:.2f} мс',
+                    'ping_default': 'Не вдалося отримати пінг до сервера!\nВикористовується значення за замовчуванням: {} мс',
+                    'ping_error': 'Помилка при вимірюванні пінгу: {} ({})',
+                    'ping_error_msg': 'Пінг має бути додатним числом!',
+                    'ping_error_title': 'Помилка',
+                    'ping_failed': 'Помилка пінгу до сервера: {}',
+                    'ping_hint': 'Використовується як резервне значення, якщо авто-пінг не спрацює.',
+                    'ping_http_default': 'HTTP пінг за замовчуванням: {} мс',
+                    'ping_label': 'Пінг за замовчуванням (мс):',
+                    'ping_measure_done': 'Вимірювання пінгу завершено.',
+                    'ping_measure_result': 'Результат пінгу: HTTP={} мс, TCP={} мс',
+                    'ping_measure_time_come': 'Час вимірювання настав.',
+                    'ping_not_measured_manual': 'Використовується ручне значення пінгу.',
+                    'ping_note': 'Примітка: точний пінг допомагає скоригувати час надсилання.',
+                    'ping_server': 'Сервер: {}, Пінг: {:.2f} мс',
+                    'ping_start': 'Початок перевірки пінгу...',
+                    'ping_tcp_default': 'TCP пінг за замовчуванням: {} мс',
+                    'pre_generation_main': 'Основний Device ID: {}',
+                    'pre_generation_spam1': 'Слот 1: {}',
+                    'pre_generation_spam2': 'Слот 2: {}',
+                    'pre_generation_spam3': 'Слот 3: {}',
+                    'pre_generation_spam4': 'Слот 4: {}',
+                    'pre_generation_spam5': 'Слот 5: {}',
+                    'pre_generation_title': 'Попередня генерація Device ID:',
+                    'profile_asia': 'Азія',
+                    'profile_europe': 'Європа',
+                    'profile_usa_africa': 'США / Африка',
+                    'profiles_btn': 'Профілі',
+                    'profiles_title': 'Профілі таймінгів',
+                    'req_using_device_id': '[Запит #{}] Device ID={}',
+                    'request_error': 'Помилка надсилання запиту: {}',
+                    'request_failed': '[Помилка] Не вдалося надіслати запит',
+                    'request_prefix': 'Запит',
+                    'request_sent': 'Запит надіслано о: {}',
+                    'response_error': 'Помилка розбору відповіді: {}',
+                    'response_received': 'Отримано відповідь о: {}',
+                    'save_btn': 'Зберегти',
+                    'saved': 'Збережено',
+                    'scheduling_requests': 'Планування запитів...',
+                    'script_info': 'Інформація про скрипт',
+                    'sections_menu': 'Меню розділів',
+                    'send_with_token': 'Надсилання запиту з токеном: {}...',
+                    'settings': 'Налаштування',
+                    'settings_saved': 'Налаштування успішно збережено.',
+                    'social_github': 'Репозиторій GitHub',
+                    'social_reddit': 'Спільнота Reddit',
+                    'social_site_script': 'Офіційний сайт скрипта',
+                    'social_telegram': 'Telegram канал',
+                    'spam_mode_checkbox': 'Режим серійного надсилання (Spam)',
+                    'spam_mode_desc': 'Надсилає декілька запитів поспіль із інтервалом у мілісекунди.',
+                    'spam_using_device_id': '[Серія] Використання Device ID: {}',
+                    'start_btn': 'Почати',
+                    'status_app_approved_checking': 'Заявку схвалено! Перевірка стану...',
+                    'status_app_possibly_approved': 'Можливо, заявку схвалено! Перевірка стану...',
+                    'status_app_rejected_100001': 'Ліміт заявок на сьогодні вичерпано (100001). Спробуйте завтра.',
+                    'status_error': 'Помилка перевірки статусу: {}',
+                    'status_get_failed': 'Не вдалося отримати статус акаунта.',
+                    'status_mode2_sending': 'Надсилання запитів...',
+                    'status_mode2_waiting': 'Очікування цільового часу...',
+                    'status_ping_wait': 'Очікування вимірювання пінгу...',
+                    'status_ready': 'Готовий до роботи',
+                    'status_spam_wait': 'Очікування моменту відправки серії...',
+                    'submit_application': 'Подати заявку',
+                    'success_dialog_message': 'Заявку на розблокування успішно схвалено!\n'
+                                              'Перевірте статус у налаштуваннях розробника на телефоні.',
+                    'success_dialog_title': 'Успішно!',
+                    'tab_hyperos1_bypass': 'HyperOS 1 Bypass',
+                    'tab_mi_unlock': 'Mi Unlock',
+                    'tab_settings': 'Налаштування та інструкція',
+                    'tab_unlock': 'Подання заявок',
+                    'target_time': 'Цільовий час: {} (таймінг: {} сек)',
+                    'target_time_manual': 'Цільовий час (ручний режим): {}',
+                    'tcp_ping_label': 'TCP пінг: {} мс',
+                    'tcp_request': 'TCP запит...',
+                    'tcp_request_log': 'TCP пінг: {} мс',
+                    'theme_color_apply': 'Застосувати колір',
+                    'theme_color_error': 'Будь ласка, введіть коректний HEX-код кольору у форматі #RRGGBB.',
+                    'theme_color_error_title': 'Некоректний колір',
+                    'theme_color_hint': 'Введіть HEX-код (наприклад, #D0BCFF) або оберіть у палітрі',
+                    'theme_color_label': 'Акцентний колір теми:',
+                    'theme_color_picker': 'Обрати колір...',
+                    'theme_color_placeholder': '#D0BCFF',
+                    'theme_dark': 'Темна',
+                    'theme_dark_only': 'Програма працює виключно в темній темі (Material 3 Dark).',
+                    'theme_label': 'Тема оформлення:',
+                    'theme_light': 'Світла',
+                    'theme_locked_notice': 'Інтерфейс зафіксовано в оптимізованій темній темі Material 3.',
+                    'theme_system': 'Системна',
+                    'time': 'Час',
+                    'time_error': 'Не вдалося синхронізувати точний час із сервером.',
+                    'time_reached': 'Цільовий час досягнуто: {}',
+                    'time_synchronized': 'Час синхронізовано',
+                    'time_wait': 'Очікування потрібного часу...',
+                    'timings_btn': 'Налаштування таймінгів',
+                    'timings_count_label': 'Обрано: {} з {}',
+                    'timings_desc': 'Оберіть таймінги (зсуви в мс) для авто-надсилання о 23:59:59:',
+                    'timings_dialog_title': 'Налаштування таймінгів',
+                    'timings_min_warning': 'Необхідно обрати хоча б 1 таймінг надсилання!',
+                    'timings_region_default': 'Регіон: Європа (за замовчуванням обрано 6 таймінгів)',
+                    'timings_reset_btn': 'Скинути за замовчуванням',
+                    'timings_risk_warning': '⚠️ Вибір занадто великої кількості запитів може призвести до тимчасового '
+                                            'блокування на надсилання заявок, а занадто мала кількість таймінгів у '
+                                            'невідповідний момент може призвести до невдачі.',
+                    'timings_save_btn': 'Зберегти і закрити',
+                    'timings_slots_title': 'Налаштування 15 слотів таймінгів (сек:мс):',
+                    'title': 'Xiaomi Unlock Tool',
+                    'token_status_check_failed': 'Не вдалося підтвердити валідність токена через сервер Xiaomi. Перевірте '
+                                                 'токен.',
+                    'trouble_content': 'Часті проблеми та їх вирішення:\n'
+                                       '• Код 100001: Добовий ліміт квоти заявок вичерпано. Спробуйте наступного дня о 00:00 '
+                                       'за Пекіном.\n'
+                                       '• Код 100004: Термін дії токена минув. Отримайте новий токен або увійдіть через '
+                                       'QR-код.\n'
+                                       '• Помилка часу: Перевірте підключення до Інтернету або вимкніть VPN.\n'
+                                       '• Пристрій не знайдено в Fastboot: Перевірте встановлення драйверів USB через кнопку '
+                                       '«Драйвери».',
+                    'trouble_title': 'Вирішення проблем',
+                    'unknown_status_title': 'Помилка',
+                    'unlock_process': 'Запуск процесу розблокування...',
+                    'unlock_start': 'Початок процесу розблокування...',
+                    'update_available': 'Доступне нове оновлення!',
+                    'update_btn_ok': 'Зрозуміло',
+                    'update_btn_update': 'Оновити зараз',
+                    'update_check_error': 'Помилка перевірки оновлень',
+                    'update_checking': 'Перевірка наявності оновлень...',
+                    'update_error': 'Не вдалося перевірити оновлення',
+                    'update_message': 'Доступна нова версія {}.\nБажаєте завантажити оновлення?',
+                    'update_not_available': 'Оновлення відсутні. У вас встановлена остання версія.',
+                    'wb_id_label': 'Ідентифікатор сесії (wb_id):',
+                    'wb_id_placeholder': 'wb_id...',
+                    'wb_instruction': 'Інструкція для отримання токена через браузер:',
+                    'wb_instruction_after_open': 'Після відкриття сторінки авторизуйтесь та скопіюйте токен.',
+                    'welcome_btn': 'Розпочати роботу',
+                    'welcome_text': 'Інструмент для автоматичного розблокування завантажувача Xiaomi HyperOS та MIUI.',
+                    'welcome_title': 'Ласкаво просимо до Xiaomi Unlock Tool!',
+                    'your_region': 'Ваш регіон: {}'}
 
-Solusi:
-
-1. Segarkan halaman
-
-2. Keluar dari akun Anda dan masuk kembali.
-
-Masalah: Cookie kedaluwarsa atau tidak berfungsi
-
-Kemungkinan penyebab:
-
-• Region akun bukan Global (ganti)
-
-• Cookie benar-benar kedaluwarsa
-
-Masalah: Batas permintaan tercapai
-
-Solusi:
-
-Periksa status di Mi Unlock di pengaturan ponsel
-
-Masalah: Kesalahan 10001 dan lainnya
-
-Solusi:
-
-Skrip gagal mengirim permintaan
-
-Hubungi pengembang:
-
-• Melalui grup Telegram:
-
-https://t.me/miunlocktoolrevamp""",
-            'authors_title': "Pengembang",
-            'authors_developers_title': "Pengembang Skrip",
-            'authors_pc_cli_dev': "Pengembang Versi PC & CLI",
-            'authors_web_android_dev': "Pengembang Situs Web & Versi Android",
-            'authors_base_script': "Skrip dibuat berdasarkan skrip dari:",
-            'authors_social_links': "Tautan Media Sosial",
-            'authors_donate_title': "Donasi untuk Pengembangan",
-            'authors_donate_btn': "DonationAlerts",
-            'authors_crypto_network': "USDT jaringan TON",
-            'authors_content': """Pengembang Skrip:
-• pktloss, New G3n
-
-Pengembang Versi PC & CLI:
-• New G3n
-
-Pengembang Situs Web & Versi Android:
-• pktloss
-
-Skrip dibuat berdasarkan skrip dari:
-• Vierta
-
-Tautan Media Sosial:
-• Telegram: https://t.me/miunlocktoolrevamp
-• 4PDA: https://4pda.to/forum/index.php?showtopic=721838&view=findpost&p=145201115
-• GitHub: https://github.com/AsInsideOut/miunlocktool
-• Situs Web: https://miunlock.su/
-
-Donasi untuk Pengembangan:
-• DonationAlerts: https://dalink.to/asinsideout
-• Dompet Kripto:
-UQBCkvXTF-NiT7P8g0G-4oiAdsU81rMWJNYBTxDrbl76FabG
-USDT jaringan TON
-
-Versi skrip: 8.1""",
-            'cookie_checkbox': "Nonaktifkan pemeriksaan Token Cookie sebelum pengiriman",
-            'final_unlock_checkbox': "Pengajuan selesai. Coba pasang telepon terlepas dari hasilnya.",
-            'ping_label': "Ping default (ms):",
-            'color_theme_label': "Tema warna:",
-            'color_theme_xiaomi_orange': "Xiaomi Orange",
-            'color_theme_red_sun': "Red Sun",
-            'color_theme_blue_world': "Blue World",
-            'save_btn': "Simpan",
-            'close_btn': "Tutup",
-            'ping_error_title': "Kesalahan",
-            'ping_error_msg': "Ping harus berupa angka positif.",
-            'cookie_error_title': "Kesalahan",
-            'error_title': "Kesalahan",
-            'account_blocked_title': "Informasi",
-            'account_new_title': "Informasi",
-            'account_approved_title': "Sukses",
-            'unknown_status_title': "Kesalahan",
-            'install_error': "Kesalahan Instalasi",
-            'import_error': "Kesalahan Impor",
-            'settings': "Pengaturan",
-            'cookie_check_state': "Dinonaktifkan",
-            'ban_risk': "Saya menyadari risiko kemungkinan pemblokiran akun",
-            'submit_application': "Mulai Aplikasi",
-            'script_info': "Instruksi dan Pengaturan Skrip",
-            'exit': "Keluar",
-            'execution_log': "Log Eksekusi",
-            'clear_log_btn': "Bersihkan",
-            'unlock_process': "Memulai proses buka kunci...",
-            'auto_mode': "Mode Otomatis",
-            'auto_mode_1': "Mode Otomatis #1",
-            'auto_mode_2': "Mode Otomatis",
-            'manual_mode': "Mode Manual",
-            'manual_time_label': "Waktu pengiriman (detik):",
-            'manual_time_hint': "58.5 - 59.8 (contoh: 59.1)",
-            'manual_mode_start': "Mode manual: mengirim pada 23:59:{}",
-            'manual_time_error': "Waktu tidak valid. Gunakan format 58.5 - 59.8",
-            'application_not_submitted': "[Status] Aplikasi tidak terkirim, batas terlampaui, coba lagi pada {} (Bulan/Hari).",
-            'device_binding_hint': "Coba ikat perangkat di Pengaturan, Bagian Status Mi Unlock",
-            'theme_label': "Tema antarmuka:",
-            'theme_system': "Sistem",
-            'theme_light': "Terang",
-            'theme_dark': "Gelap",
-            'theme_locked_notice': "Saat ini hanya tema gelap yang tersedia",
-            'mode_label': "Mode operasi:",
-            'cookies_title': "Mendapatkan Cookies",
-            'expand_cookies': "▶ Mendapatkan Cookies",
-            'collapse_cookies': "▼ Mendapatkan Cookies",
-            'check_updates': "Periksa Pembaruan",
-            'update_available': "Pembaruan tersedia",
-            'update_not_available': "Tidak ada pembaruan",
-            'update_checking': "Memeriksa pembaruan...",
-            'update_error': "Kesalahan saat memeriksa pembaruan",
-            'current_version': "Versi saat ini: {}",
-            'your_region': "Wilayah Anda: {}",
-            'header_region': "Wilayah: {}",
-            'latest_version': "Versi terbaru: {}",
-            'update_btn_ok': "Baik",
-            'update_btn_update': "Perbarui",
-            'update_message': "Versi baru {} tersedia! Apakah Anda ingin membuka halaman unduhan?",
-            'time_synchronized': "Waktu disinkronkan",
-            'ms': "ms",
-            'default': "default",
-            'welcome_title': "Xiaomi Unlock Tool",
-            'welcome_text': (
-                "Selamat datang di Xiaomi Unlock Tool!\n\n"
-                "PERINGATAN PENTING:\n\n"
-                "SEBELUM MENGGUNAKAN, BACA INSTRUKSI DENGAN SEKSAMA!\n\n"
-                "1. Menggunakan alat ini dapat menyebabkan pemblokiran pengiriman.\n\n"
-                "2. Alat ini HANYA untuk perangkat dengan HyperOS Global\n"
-                "   dan TIDAK bekerja dengan model China.\n\n"
-                "3. Persyaratan:\n"
-                "   • Akun Mi lebih dari 30 hari\n"
-                "   • Akun Mi Community dengan region Global\n"
-                "   • Perangkat pada HyperOS 1-3\n\n"
-                "4. Dengan menggunakan alat ini, Anda setuju bahwa pengembang tidak bertanggung jawab atas perangkat Anda.\n\n"
-                "Klik 'Lanjutkan' untuk memulai."
-            ),
-            'welcome_btn': "Lanjutkan",
-            'ping_hint': "Nilai ini akan digunakan jika ping ke server tidak dapat diukur.",
-            'color_theme_xiaomi': "Xiaomi Orange",
-            'color_theme_blue': "Blue World",
-            'color_theme_red': "Red Sun",
-            'language_label': "Bahasa",
-            'log_to_txt_checkbox': "Log ke file TXT",
-            'animations_checkbox': "Animasi",
-            'animations_development': "Sedang dikembangkan",
-            'input_label': "Input",
-            'application_status': "Status pengajuan: {}",
-            'application_status_not_sent': "Belum dikirim",
-            'application_status_sending': "Mengirim",
-            'application_status_success': "Berhasil",
-            'application_status_unknown': "Tidak diketahui",
-            'application_status_failed': "Tidak berhasil",
-            'spam_mode_checkbox': "Pengiriman Spam (dalam Mode Otomatis)",
-            'spam_mode_desc': "Mengirim permintaan pada 23:59:58.6, 58.8 (disesuaikan dengan ping).\nJika dinonaktifkan, mengirim satu permintaan pada waktu optimal.",
-            'ping_not_measured_manual': "Ping: tidak diukur (mode manual)",
-            'log_auto_mode_spam_selected': "Mode otomatis dipilih (Spam - 5 permintaan)",
-            'log_auto_mode_single_selected': "Mode otomatis dipilih (Permintaan tunggal)",
-            'log_manual_mode_selected': "Mode manual dipilih",
-            'log_time_gt_2355': "Waktu > 23:58. Menyinkronkan waktu sebelum memulai...",
-            'log_time_sync_success': "Waktu berhasil disinkronkan!",
-            'log_ping_wait': "Menunggu pengukuran ping pada 23:59:30 (Beijing)...",
-            'status_ping_wait': "Menunggu 23:59:30 untuk mengukur ping...",
-            'log_ping_time_passed': "Waktu pengukuran ping telah lewat. Menyinkronkan dan mengukur sekarang...",
-            'log_ping_start': "Waktunya mengukur ping! Melakukan pengukuran...",
-            'log_measuring_ping': "Mengukur ping ke server...",
-            'log_ping_measured': "Ping terukur: {} ms",
-            'log_time_updated': "Waktu diperbarui: {}",
-            'log_resync_error': "Kesalahan sinkronisasi ulang, melanjutkan dengan pengatur waktu saat ini.",
-            'log_normal_mode_ping': "Mode normal: menghitung ping...",
-            'log_calculated_send_time': "Perkiraan waktu pengiriman (untuk mencapai tengah malam): 23:59:{}",
-            'log_spam_mode_targets': "MODE SPAM: Waktu target (setelah penyesuaian ping): {}",
-            'status_spam_wait': "Menunggu serangan spam...",
-            'log_spam_sending_at': "[Spam #{}] Mengirim permintaan pada 23:59:{}s",
-            'log_spam_new_device_id': "[Spam #{}] DeviceId baru: {}",
-            'log_spam_response_prefix': "[Spam #{}] Waktu: {}s",
-            'log_spam_success_prefix': "SUKSES!",
-            'log_spam_response_format': "{} | Kode: {} | {}",
-            'log_spam_parse_error': "[Spam #{}] Kesalahan mengurai respons: {}",
-            'log_spam_no_response': "[Spam #{}] Tidak ada respons dari server",
-            'log_spam_send_error': "[Spam #{}] Kesalahan mengirim permintaan: {}",
-            'login_title': "Login Akun Xiaomi",
-            'login_user_label': "ID Mi Account / Email / Telepon:",
-            'login_user_placeholder': "Masukkan login Anda",
-            'login_pwd_label': "Kata Sandi:",
-            'login_pwd_placeholder': "********",
-            'wb_instruction': "1. Klik tombol di bawah untuk membuka halaman konfirmasi di browser Anda.\n2. Setelah Anda melihat 'R':'','S':'OK' di halaman, salin tautan lengkap dari bilah alamat.",
-            'wb_instruction_after_open': "Tempel tautan lengkap di bidang di bawah.",
-            'wb_id_label': "Tautan konfirmasi (wb_id):",
-            'wb_id_placeholder': "Tempel tautan di sini...",
-            'open_confirmation_page': "Buka halaman konfirmasi",
-            'login_button': "Masuk dan Dapatkan Token",
-            'login_disabled_notice': "Sementara tidak tersedia",
-            'logging_in': "Masuk...",
-            'login_fields_error': "Isi semua bidang (login, kata sandi, dan tautan)!",
-            'login_success': "Login berhasil! Token diperoleh.",
-            'login_failed': "Login gagal",
-            'login_failed_generic': "Login gagal. Periksa kredensial Anda.",
-            'login_token_extract_error': "Tidak dapat mengekstrak token secara otomatis. Silakan salin secara manual dari c.mi.com/global.",
-            'mi_unlock_title': "Mi Unlock Tool",
-            'mi_unlock_checking_python': "Memeriksa instalasi Python",
-            'mi_unlock_upgrading': 'Memperbarui miunlock...',
-            'mi_unlock_python_found': "Python ditemukan: {}",
-            'mi_unlock_python_not_found': "Python tidak ditemukan!",
-            'mi_unlock_python_error_msg': (
-                "Python tidak ditemukan!\n\n"
-                "Mi Unlock Tool memerlukan Python 3.8 atau lebih tinggi.\n\n"
-                "Unduh Python dari situs resmi:\n"
-                "https://www.python.org/downloads/\n\n"
-                "PENTING: Saat instalasi, pastikan untuk mencentang\n"
-                "'Add Python to PATH'"
-            ),
-            'mi_unlock_installing': "Menginstal paket miunlock...",
-            'mi_unlock_install_cmd': "Menjalankan: pip install miunlock",
-            'mi_unlock_already_installed': "Paket miunlock sudah terinstal",
-            'mi_unlock_install_success': "Paket miunlock berhasil diinstal",
-            'mi_unlock_install_error': "Gagal menginstal miunlock!",
-            'mi_unlock_starting': "Memulai Mi Unlock Tool...",
-            'mi_unlock_launching': "Menjalankan miunlock...",
-            'mi_unlock_file_not_found': "File tidak ditemukan: {}",
-            'mi_unlock_not_found': "Error: miunlock tidak ditemukan!",
-            'mi_unlock_completed': "Mi Unlock Tool telah selesai",
-            'mi_unlock_finished': "Program selesai",
-            'mi_unlock_error': "Error: {}",
-            'mi_unlock_critical_error': "Error kritis: {}",
-            'mi_unlock_close': "Tutup",
-            'mi_unlock_input_label': "Input",
-            'mi_unlock_input_placeholder': "Masukkan respons dan tekan Enter...",
-            'mi_unlock_send_btn': "Kirim",
-            'mi_unlock_input_prefix': "→ {}",
-            'mi_unlock_input_error': "Kesalahan pengiriman input: {}",
-            'mi_unlock_stdout_error': "Kesalahan membaca stdout: {}",
-            'mi_unlock_stderr_error': "Kesalahan membaca stderr: {}",
-            'mi_unlock_auto_sending': "→ Mengirim Enter otomatis...",
-            'mi_unlock_auto_send_error': "Kesalahan kirim otomatis: {}",
-            'mi_unlock_read_error': "Kesalahan baca: {}",
-            'mi_unlock_process_exit': "Proses keluar dengan kode: {}",
-            'mi_unlock_initial_enter': "→ Mengirim Enter awal otomatis...",
-            'mi_unlock_auto_send_final': "→ Mengirim Enter akhir otomatis...",
-            'pre_generation_title': "GENERASI DEVICE ID AWAL:",
-            'pre_generation_main': "  Device_id utama: {}",
-            'pre_generation_spam1': "  Spam device_id #1: {}",
-            'pre_generation_spam2': "  Spam device_id #2: {}",
-            'pre_generation_spam3': "  Spam device_id #3: {}",
-            'pre_generation_spam4': "  Spam device_id #4: {}",
-            'pre_generation_spam5': "  Spam device_id #5: {}",
-            'logs_sent': "Log berhasil dikirim ke server",
-            'logs_send_error': "Kesalahan mengirim log: {}",
-            'spam_using_device_id': "[Spam #{}] Menggunakan device_id: {}",
-            'send_with_token': "Mengirim dengan token #{}",
-            # New keys
-            'tcp_ping_label': "Ping TCP",
-            'http_ping_label': "Ping HTTP",
-            'measuring_pings': "Mengukur ping (HTTP dan TCP)...",
-            'scheduling_requests': "Menjadwalkan permintaan...",
-            'http_request': "Permintaan HTTP #{}",
-            'tcp_request': "Permintaan TCP #{}",
-            'ping_measure_done': "Pengukuran ping selesai.",
-            'ping_measure_time_come': "Waktu pengukuran ping telah tiba, memulai sekarang.",
-            'ping_http_default': "Ping HTTP tidak dapat diukur, menggunakan nilai default: {} ms",
-            'ping_tcp_default': "Ping TCP tidak dapat diukur, menggunakan nilai default: {} ms",
-            'ping_measure_result': "Pengukuran selesai. HTTP: {:.2f} ms, TCP: {:.2f} ms",
-            'http_request_log': "Permintaan HTTP #{}: device_id={}, mengirim dalam {:.3f}s",
-            'tcp_request_log': "Permintaan TCP #{}: device_id={}, mengirim dalam {:.3f}s",
-            'mi_unlock_label': "Mi Unlock",
-            'mi_unlock_desc': (
-                "Alat untuk membuka kunci dengan Mi Unlock\n"
-                "Oleh: pktloss, New G3n\n"
-                "Versi: 8.1"
-            ),
-            'mi_unlock_python_not_found': "Python: tidak ditemukan",
-            'mi_unlock_python_found_label': "Python: {}",
-            'mi_unlock_package_not_installed': "miunlock: tidak terinstal",
-            'mi_unlock_package_installed': "miunlock: terinstal",
-            'mi_unlock_start_button': "Mulai Mi Unlock",
-            'mi_unlock_process_interrupted': "Proses dihentikan oleh pengguna",
-            'mi_unlock_log_title': "Log Eksekusi",
-            'mi_unlock_drivers_button': "Unduh Driver",
-        }
-
-    def get_spanish(self):
-        return {
-            'title': "Xiaomi Unlock Tool",
-            'main_title': "Xiaomi Unlock Tool",
-            'desc': (
-                "Herramienta para el envío automático de solicitudes de desbloqueo\n"
-                "Por: pktloss, New G3n\n"
-                "Versión: 8.1"
-            ),
-            'desc_manual': (
-                "Modo manual - seleccione la hora de envío manualmente\n"
-                "Por: pktloss, New G3n\n"
-                "Versión: 8.1"
-            ),
-            'params': "Parámetros",
-            'tab_unlock': "Enviar Solicitud",
-            'tab_settings': "Configuración e Instrucciones",
-            'tab_mi_unlock': "Mi Unlock",
-            'log_success_prefix': "¡ÉXITO!",
-            'log_code_message': "Código: {code} | Mensaje: {msg}",
-            'log_request_parse_error': "[Error al procesar respuesta] No se pudo analizar JSON: {data}",
-            'log_request_failed_no_response': "[Error] No se pudo enviar la solicitud (sin respuesta)",
-            'log_request_exception': "[Error de solicitud] {error}",
-            'cookie_label': "New_bbs_ServiceToken:",
-            'cookie_placeholder': "Pegue su token aquí...",
-            'timings_btn': "Ajuste de Tiempos",
-            'timings_dialog_title': "Ajuste de Tiempos",
-            'timings_desc': "Seleccione los tiempos (desplazamientos en ms) para el envío automático a las 23:59:59:",
-            'timings_region_default': "Región: Europa (6 tiempos seleccionados por defecto)",
-            'timings_min_warning': "¡Debe seleccionar al menos 1 tiempo de envío!",
-            'timings_risk_warning': "⚠️ Seleccionar demasiadas solicitudes puede provocar un bloqueo temporal para enviar solicitudes, mientras que seleccionar muy pocos tiempos en el momento incorrecto puede provocar un error en el envío.",
-            'timings_count_label': "Seleccionados: {} de {}",
-            'timings_reset_btn': "Restablecer por defecto",
-            'timings_save_btn': "Guardar y cerrar",
-            'sections_menu': "Menú de Secciones",
-            'profiles_btn': "Perfiles",
-            'profiles_title': "Perfiles de Tiempos",
-            'profile_europe': "Europa",
-            'profile_asia': "Asia",
-            'profile_usa_africa': "EE.UU. / África",
-            'color_picker_title': "Selector de color del tema",
-            'color_picker_accept': "Aceptar",
-            'color_picker_cancel': "Cerrar",
-            'color_picker_current': "Actual:",
-            'color_picker_selected': "Color seleccionado:",
-            'color_picker_palette': "Paleta de colores preestablecidos:",
-            'color_picker_red': "Rojo (R)",
-            'color_picker_green': "Verde (G)",
-            'color_picker_blue': "Azul (B)",
-            'animations_coming_soon': "Las animaciones se agregarán en el futuro",
-            'copy_address_btn': "📋 Copiar",
-            'address_copied': "✓ ¡Copiado!",
-            'timings_slots_title': "Configurar 15 ranuras de tiempo (seg:ms):",
-            'login_btn': "Iniciar sesión en la cuenta",
-            'check_eligibility_btn': "Verificar elegibilidad",
-            'checking_eligibility': "Comprobando elegibilidad de la cuenta...",
-            'eligibility_eligible_title': "Verificación de elegibilidad",
-            'login_title': "Autorización de cuenta Xiaomi",
-            'login_subtitle': "Extracción automática de New_bbs_serviceToken",
-            'login_tab_qr': "Código QR / Navegador",
-            'login_tab_existing': "Cuenta guardada",
-            'login_existing_found': "Sesión de cuenta Mi guardada detectada",
-            'login_existing_id': "ID de cuenta: {}",
-            'login_use_existing_btn': "⚡ Usar esta cuenta",
-            'login_qr_scan_tip': "Escanee el código QR en la aplicación Mi Community\no con la cámara de su teléfono Xiaomi",
-            'login_open_browser_btn': "🌐 Iniciar sesión con el navegador",
-            'login_refresh_qr': "🔄 Actualizar código QR",
-            'login_waiting': "Esperando confirmación de autorización...",
-            'login_qr_expired': "El código QR ha caducado. Haga clic en 'Actualizar código QR'.",
-            'login_loading_qr': "⏳ Cargando código QR...",
-            'login_browser_opened': "Página de inicio de sesión abierta en el navegador. Esperando finalización...",
-            'login_refreshing_qr': "Actualizando código QR...",
-            'login_qr_fetch_error': "Error al obtener código QR: {}",
-            'login_authorized_extracting': "¡Autorización confirmada! Extrayendo token...",
-            'login_extracting_token': "Extrayendo token...",
-            'login_session_expired': "La sesión ha caducado",
-            'login_success': "¡Autorización exitosa! new_bbs_serviceToken obtenido.",
-            'login_error': "Error de autorización: {}",
-            'login_token_extract_error': "No se pudo extraer el token de la respuesta del servidor.",
-            'close_btn': "Cerrar",
-            'log_token_check_success': "Verificación de token y estado aprobada con éxito.",
-            'log_token_check_skipped': "Advertencia: la verificación de token está desactivada en la configuración, continuando...",
-            'log_mode2_selected': "Modo Automático #2 seleccionado (spam HTTP hacia 23:59:59)",
-            'log_mode2_ntp_saved': "Modo Automático #2: Sincronización NTP guardada, modo sin medición de ping",
-            'status_mode2_waiting': "Modo Automático #2: esperando a las 23:59:59",
-            'log_mode2_beijing_reached': "Modo Automático #2: hora de Pekín 23:59:59 alcanzada",
-            'status_mode2_sending': "Modo Automático #2: enviando paquete HTTP",
-            'mode2_prefix': "Modo Automático #2",
-            'mode2_timing': "temporización",
-            'log_mode2_plan_sent': "Plan de spam HTTP enviado",
-            'mode2_using_device_id': "[Modo Automático #2 HTTP #{}] Usando device_id: {}",
-            'request_prefix': "Solicitud",
-            'req_using_device_id': "[Solicitud #{}] Usando device_id: {}",
-            'log_ping_start_http_tcp': "Iniciando medición de pings HTTP y TCP...",
-            'log_ping_avg_http': "Ping HTTP promedio: {:.2f} ms",
-            'log_ping_http_failed': "No se pudo medir el ping HTTP",
-            'log_ping_avg_tcp': "Ping TCP promedio: {:.2f} ms",
-            'log_ping_tcp_failed': "No se pudo medir el ping TCP",
-            'status_get_failed': "[Error] No se pudo obtener el estado de desbloqueo.",
-            'status_app_approved_checking': "[Estado] Solicitud aprobada, verificando estado...",
-            'status_app_rejected_100001': "[Estado] Solicitud rechazada, error de solicitud (código 100001).",
-            'status_app_possibly_approved': "[Estado] Solicitud posiblemente aprobada, verificando estado...",
-            'success_dialog_title': "¡Éxito!",
-            'success_dialog_message': "¡Éxito! Intente vincular su cuenta.",
-            'theme_dark_only': "Tema oscuro (solo el tema oscuro está disponible)",
-            'confirm': "Reconozco el riesgo de posible bloqueo de cuenta",
-            'info': "Información",
-            'status_ready': "Listo para comenzar",
-            'ping': "Ping: no medido",
-            'time': "Hora: no sincronizada",
-            'start_btn': "Iniciar Solicitud",
-            'instructions_btn': "Instrucciones y Configuración",
-            'exit_btn': "Salir",
-            'log': "Registro de Ejecución",
-            'clear_log_btn': "Limpiar",
-            'update_not_available': "No se encontraron actualizaciones",
-            'update_check_error': "Error al buscar actualizaciones",
-            'unlock_start': "Iniciando proceso de desbloqueo...",
-            'device_id_gen': "DeviceId generado: {}",
-            'ping_start': "Calculando ping...",
-            'ping_server': "Ping a {}: {:.2f} ms",
-            'ping_failed': "No se pudo obtener ping del servidor {}",
-            'ping_error': "Error al hacer ping a {}: {}",
-            'open_miflash': "MiFlash Unlock",
-            'social_telegram': "Telegram",
-            'social_reddit': "Reddit",
-            'social_github': "GitHub",
-            'social_site_script': "Sitio del Script",
-            'theme_color_label': 'Color del tema',
-            'theme_color_picker': 'Elegir color',
-            'theme_color_apply': 'Aplicar',
-            'theme_color_hint': 'Introduce HEX (#RRGGBB) o RGB (R,G,B)',
-            'theme_color_error_title': 'Error de color',
-            'theme_color_error': 'Introduce un HEX (#RRGGBB) o RGB (R,G,B) válido.',
-            'theme_color_placeholder': '#D0BCFF',
-            'ping_default': "¡No se pudo obtener ping de ningún servidor!\nUsando valor predeterminado: {} ms",
-            'ping_avg': "Ping promedio: {:.2f} ms",
-            'ntp_connect': "Intentando conectar al servidor NTP: {}",
-            'ntp_time': "Hora de Pekín recibida del servidor {}: {}",
-            'ntp_failed': "No se pudo conectar a ningún servidor NTP.",
-            'time_wait': "Esperando hora para ping (23:59:30 hora de Pekín)...",
-            'target_time': "Esperando hasta {} (ajustado por ping {} ms para llegar a la medianoche)",
-            'target_time_manual': "Esperando hasta {} (modo manual)",
-            'time_reached': "Hora alcanzada: {}. Iniciando envío de solicitud...",
-            'cookie_skipped': "Verificación de cookie omitida según configuración",
-            'cookie_expired': "Cookie caducada, por favor actualícela",
-            'account_ready': "[Estado] La cuenta puede enviar solicitud de desbloqueo.",
-            'account_blocked': "[Estado] La cuenta tiene bloqueo de envío hasta {} (Mes/Día).",
-            'account_new': "[Estado] La cuenta fue creada hace menos de 30 días.",
-            'account_approved': "[Estado] Solicitud aprobada, desbloqueo posible hasta {}.",
-            'account_unknown': "[Error] Estado desconocido.",
-            'status_error': "[Error al verificar estado] {}",
-            'request_sent': "\nEnviando solicitud a las {} (UTC+8)",
-            'response_received': "Respuesta recibida a las {} (UTC+8)",
-            'request_failed': "[Error] No se pudo enviar la solicitud",
-            'response_error': "[Error al procesar respuesta] {}",
-            'request_error': "[Error de solicitud] {}",
-            'confirm_warning': "¡Por favor confirme que comprende todos los riesgos!",
-            'cookie_error': "¡Ingrese el valor de la cookie!",
-            'token_status_check_failed': "Error: la comprobación del token/estado falló. Se detuvo el envío. Desactive 'Desactivar verificación de Token Cookie antes del envío' si desea omitir la comprobación.",
-            'time_error': "¡No se pudo sincronizar la hora!",
-            'settings_saved': "\nConfiguración guardada:",
-            'cookie_check': "Verificación de Token Cookie: {}",
-            'default_ping': "Ping predeterminado: {} ms",
-            'ping_note': "Este valor se usará si falla la medición de ping a los servidores.",
-            'saved': "¡Configuración guardada exitosamente!",
-            'instructions_title': "Instrucciones y Configuración",
-            'about_title': "Acerca de",
-            'about_content': (
-                "Herramienta para envío automático de solicitudes\n"
-                "de desbloqueo de gestor de arranque en\n"
-                "dispositivos Xiaomi con HyperOS\n\n"
-                "Versión del script: 8.1"
-            ),
-            'general_title': "Requisitos",
-            'general_content': (
-                "1. La cuenta Mi debe tener más de 30 días\n \n"
-                "2. La cuenta de Mi Community debe tener\n \n"
-                "región Global configurada\n \n"
-                "3. Desbloqueo disponible para todos los dispositivos\n"
-                "excepto ROM China (CNXM)\n \n"
-                "4. El dispositivo debe tener HyperOS"
-            ),
-            'firefox_title': "FireFox | Edge",
-            'firefox_content': (
-                "1. Descargue la extensión Cookie Editor\n\n"
-                "2. Inicie sesión en su cuenta (después de cerrar sesión)\n"
-                "en el sitio de Xiaomi Mi Community:\n\n"
-                "http://c.mi.com/global\n"
-                "o \n"
-                "http://mi.com\n\n"
-                "3. En la ventana de Cookie Editor, extraiga\n"
-                "new_bbs_token y cópielo\n\n"
-                "Notas importantes:\n \n"
-                "1. Todas las horas en el script son hora de Pekín"
-            ),
-            'chrome_title': "Chrome",
-            'chrome_content': (
-                "1. Inicie sesión en su cuenta (después de cerrar sesión)\n"
-                "en el sitio de Xiaomi Mi Community:\n"
-                "https://c.mi.com/global\n"
-                "o \n"
-                "https://mi.com\n\n"
-                "2. En la barra de direcciones del navegador, ingrese el comando:\n\n"
-                "javascript :(function(){var token=document.cookie.match(/popRunToken=([^;]+)/);"
-                "if(token){prompt(\"Copiar token:\", token[1]);}"
-                "else{alert(\"Token no encontrado\");}})()\n\n"
-                "*recuerde quitar el espacio después de javascript al pegar el comando en la barra de direcciones del navegador*\n\n"
-                "3. Copie el valor del token de la ventana emergente\n\n"
-                "Notas importantes:\n \n"
-                "1. Todas las horas en el script son hora de Pekín"
-            ),
-            'trouble_title': "Solución de Problemas",
-            'trouble_content': """Problema: CookieEditor no muestra new_bbs_serviceToken
-
-Solución:
-
-1. Actualice la página
-
-2. Cierre sesión y vuelva a iniciarla
-
-Problema: Cookie caducada o no funciona
-
-Posibles causas:
-
-• La región de la cuenta no es Global (cámbiela)
-
-• La cookie realmente ha caducado
-
-Problema: Límite de solicitudes alcanzado
-
-Solución:
-
-Verifique el estado en Mi Unlock en la configuración del teléfono
-
-Problema: Errores 10001 y otros
-
-Solución:
-
-El script no pudo enviar la solicitud
-
-Contacte a los desarrolladores:
-
-• A través del grupo de Telegram:
-
-https://t.me/miunlocktoolrevamp""",
-            'authors_title': "Autores",
-            'authors_developers_title': "Desarrolladores del Script",
-            'authors_pc_cli_dev': "Desarrollador de la versión PC y CLI",
-            'authors_web_android_dev': "Desarrollador del Sitio Web y Versión Android",
-            'authors_base_script': "El script está basado en el script de:",
-            'authors_social_links': "Enlaces a Redes Sociales",
-            'authors_donate_title': "Donar al Desarrollo",
-            'authors_donate_btn': "DonationAlerts",
-            'authors_crypto_network': "USDT red TON",
-            'authors_content': """Desarrolladores del Script:
-• pktloss, New G3n
-
-Desarrollador de la versión PC y CLI:
-• New G3n
-
-Desarrollador del Sitio Web y Versión Android:
-• pktloss
-
-El script está basado en el script de:
-• Vierta
-
-Enlaces a Redes Sociales:
-• Telegram: https://t.me/miunlocktoolrevamp
-• 4PDA: https://4pda.to/forum/index.php?showtopic=721838&view=findpost&p=145201115
-• GitHub: https://github.com/AsInsideOut/miunlocktool
-• Sitio Web: https://miunlock.su/
-
-Donar al Desarrollo:
-• DonationAlerts: https://dalink.to/asinsideout
-• Billetera Cripto:
-UQBCkvXTF-NiT7P8g0G-4oiAdsU81rMWJNYBTxDrbl76FabG
-USDT red TON
-
-Versión del script: 8.1""",
-            'cookie_checkbox': "Desactivar verificación de Token Cookie antes del envío",
-            'final_unlock_checkbox': "La solicitud ha terminado. Intente vincular el teléfono sin importar el resultado.",
-            'ping_label': "Ping predeterminado (ms):",
-            'color_theme_label': "Tema de color:",
-            'color_theme_xiaomi_orange': "Xiaomi Orange",
-            'color_theme_red_sun': "Red Sun",
-            'color_theme_blue_world': "Blue World",
-            'save_btn': "Guardar",
-            'close_btn': "Cerrar",
-            'ping_error_title': "Error",
-            'ping_error_msg': "¡El ping debe ser un número positivo!",
-            'cookie_error_title': "Error",
-            'error_title': "Error",
-            'account_blocked_title': "Información",
-            'account_new_title': "Información",
-            'account_approved_title': "Éxito",
-            'unknown_status_title': "Error",
-            'install_error': "Error de Instalación",
-            'import_error': "Error de Importación",
-            'settings': "Configuración",
-            'cookie_check_state': "Desactivada",
-            'ban_risk': "Reconozco el riesgo de posible bloqueo de cuenta",
-            'submit_application': "Iniciar Solicitud",
-            'script_info': "Instrucciones y Configuración",
-            'exit': "Salir",
-            'execution_log': "Registro de Ejecución",
-            'clear_log_btn': "Limpiar",
-            'unlock_process': "Iniciando proceso de desbloqueo...",
-            'auto_mode': "Modo Automático",
-            'auto_mode_1': "Modo Automático #1",
-            'auto_mode_2': "Modo Automático",
-            'manual_mode': "Modo Manual",
-            'manual_time_label': "Hora de envío (segundos):",
-            'manual_time_hint': "58.5 - 59.8 (ejemplo: 59.1)",
-            'manual_mode_start': "Modo manual: enviando a las 23:59:{}",
-            'manual_time_error': "Hora inválida. Use formato 58.5 - 59.8",
-            'application_not_submitted': "[Estado] Solicitud no enviada, límite excedido, intente de nuevo el {} (Mes/Día).",
-            'device_binding_hint': "Intente vincular dispositivos en Configuración, Sección Estado Mi Unlock",
-            'theme_label': "Tema de interfaz:",
-            'theme_system': "Sistema",
-            'theme_light': "Claro",
-            'theme_dark': "Oscuro",
-            'theme_locked_notice': "Temporalmente solo está disponible el tema oscuro",
-            'mode_label': "Modo de operación:",
-            'cookies_title': "Obtener Cookies",
-            'expand_cookies': "▶ Obtener Cookies",
-            'collapse_cookies': "▼ Obtener Cookies",
-            'check_updates': "Buscar Actualizaciones",
-            'update_available': "Actualización disponible",
-            'update_not_available': "No se encontraron actualizaciones",
-            'update_checking': "Buscando actualizaciones...",
-            'update_error': "Error al buscar actualizaciones",
-            'current_version': "Versión actual: {}",
-            'your_region': "Su región: {}",
-            'header_region': "Región: {}",
-            'latest_version': "Última versión: {}",
-            'update_btn_ok': "Bien",
-            'update_btn_update': "Actualizar",
-            'update_message': "¡Nueva versión {} disponible! ¿Desea ir a la página de descarga?",
-            'time_synchronized': "Hora sincronizada",
-            'ms': "ms",
-            'default': "predeterminado",
-            'welcome_title': "Xiaomi Unlock Tool",
-            'welcome_text': (
-                "¡Bienvenido a Xiaomi Unlock Tool!\n\n"
-                "ADVERTENCIA IMPORTANTE:\n\n"
-                "¡ANTES DE USAR, LEA CUIDADOSAMENTE LAS INSTRUCCIONES!\n\n"
-                "1. El uso de esta herramienta puede provocar bloqueo de envío.\n\n"
-                "2. La herramienta es SOLO para dispositivos con HyperOS Global\n"
-                "   y NO funciona con modelos chinos.\n\n"
-                "3. Requisitos:\n"
-                "   • Cuenta Mi con más de 30 días\n"
-                "   • Cuenta Mi Community con región Global\n"
-                "   • Dispositivo con HyperOS 1-3\n\n"
-                "4. Al usar esta herramienta, acepta que los desarrolladores no asumen responsabilidad por sus dispositivos.\n\n"
-                "Haga clic en 'Continuar' para comenzar."
-            ),
-            'welcome_btn': "Continuar",
-            'ping_hint': "Este valor se usará si no se puede medir el ping a los servidores.",
-            'color_theme_xiaomi': "Xiaomi Orange",
-            'color_theme_blue': "Blue World",
-            'color_theme_red': "Red Sun",
-            'language_label': "Idioma",
-            'log_to_txt_checkbox': "Registrar en archivo TXT",
-            'animations_checkbox': "Animaciones",
-            'animations_development': "En desarrollo",
-            'input_label': "Entrada",
-            'application_status': "Estado de la solicitud: {}",
-            'application_status_not_sent': "No enviada",
-            'application_status_sending': "Enviando",
-            'application_status_success': "Exitosa",
-            'application_status_unknown': "Desconocido",
-            'application_status_failed': "No exitosa",
-            'spam_mode_checkbox': "Envío Spam (en Modo Automático)",
-            'spam_mode_desc': "Envía solicitudes a las 23:59:58.6, 58.8 (ajustado por ping).\nSi está desactivado, envía una sola solicitud en el tiempo óptimo.",
-            'ping_not_measured_manual': "Ping: no medido (modo manual)",
-            'log_auto_mode_spam_selected': "Modo automático seleccionado (Spam - 5 solicitudes)",
-            'log_auto_mode_single_selected': "Modo automático seleccionado (Solicitud única)",
-            'log_manual_mode_selected': "Modo manual seleccionado",
-            'log_time_gt_2355': "Hora > 23:58. Sincronizando hora antes de comenzar...",
-            'log_time_sync_success': "¡Hora sincronizada exitosamente!",
-            'log_ping_wait': "Esperando medición de ping a las 23:59:30 (Pekín)...",
-            'status_ping_wait': "Esperando 23:59:30 para medir ping...",
-            'log_ping_time_passed': "Hora de medición de ping pasada. Sincronizando y midiendo ahora...",
-            'log_ping_start': "¡Hora de medir ping! Midiendo...",
-            'log_measuring_ping': "Midiendo ping a los servidores...",
-            'log_ping_measured': "Ping medido: {} ms",
-            'log_time_updated': "Hora actualizada: {}",
-            'log_resync_error': "Error de resincronización, continuando con el temporizador actual.",
-            'log_normal_mode_ping': "Modo normal: calculando ping...",
-            'log_calculated_send_time': "Tiempo de envío calculado (para llegar a la medianoche): 23:59:{}",
-            'log_spam_mode_targets': "MODO SPAM: Tiempos objetivo (después del ajuste de ping): {}",
-            'status_spam_wait': "Esperando ataque spam...",
-            'log_spam_sending_at': "[Spam #{}] Enviando solicitud a las 23:59:{}s",
-            'log_spam_new_device_id': "[Spam #{}] Nuevo deviceId: {}",
-            'log_spam_response_prefix': "[Spam #{}] Tiempo: {}s",
-            'log_spam_success_prefix': "¡ÉXITO!",
-            'log_spam_response_format': "{} | Código: {} | {}",
-            'log_spam_parse_error': "[Spam #{}] Error al analizar respuesta: {}",
-            'log_spam_no_response': "[Spam #{}] No hay respuesta del servidor",
-            'log_spam_send_error': "[Spam #{}] Error al enviar solicitud: {}",
-            'login_title': "Inicio de sesión en cuenta Xiaomi",
-            'login_user_label': "ID de Mi Account / Email / Teléfono:",
-            'login_user_placeholder': "Ingrese su usuario",
-            'login_pwd_label': "Contraseña:",
-            'login_pwd_placeholder': "********",
-            'wb_instruction': "1. Haga clic en el botón de abajo para abrir la página de confirmación en su navegador.\n2. Después de ver 'R':'','S':'OK' en la página, copie el enlace completo de la barra de direcciones.",
-            'wb_instruction_after_open': "Pegue el enlace completo en el campo de abajo.",
-            'wb_id_label': "Enlace de confirmación (wb_id):",
-            'wb_id_placeholder': "Pegue el enlace aquí...",
-            'open_confirmation_page': "Abrir página de confirmación",
-            'login_button': "Iniciar sesión y obtener token",
-            'login_disabled_notice': "Temporalmente no disponible",
-            'logging_in': "Iniciando sesión...",
-            'login_fields_error': "¡Complete todos los campos (usuario, contraseña y enlace)!",
-            'login_success': "¡Inicio de sesión exitoso! Token obtenido.",
-            'login_failed': "Error de inicio de sesión",
-            'login_failed_generic': "Error de inicio de sesión. Verifique sus credenciales.",
-            'login_token_extract_error': "No se pudo extraer el token automáticamente. Cópielo manualmente de c.mi.com/global.",
-            'mi_unlock_title': "Mi Unlock Tool",
-            'mi_unlock_checking_python': "Verificando instalación de Python",
-            'mi_unlock_upgrading': 'Actualizando miunlock...',
-            'mi_unlock_python_found': "Python encontrado: {}",
-            'mi_unlock_python_not_found': "¡Python no encontrado!",
-            'mi_unlock_python_error_msg': (
-                "¡Python no encontrado!\n\n"
-                "Mi Unlock Tool requiere Python 3.8 o superior.\n\n"
-                "Descargue Python desde el sitio oficial:\n"
-                "https://www.python.org/downloads/\n\n"
-                "IMPORTANTE: Durante la instalación, asegúrese de marcar\n"
-                "'Add Python to PATH'"
-            ),
-            'mi_unlock_installing': "Instalando paquete miunlock...",
-            'mi_unlock_install_cmd': "Ejecutando: pip install miunlock",
-            'mi_unlock_already_installed': "El paquete miunlock ya está instalado",
-            'mi_unlock_install_success': "Paquete miunlock instalado correctamente",
-            'mi_unlock_install_error': "¡Error al instalar miunlock!",
-            'mi_unlock_starting': "Iniciando Mi Unlock Tool...",
-            'mi_unlock_launching': "Lanzando miunlock...",
-            'mi_unlock_file_not_found': "Archivo no encontrado: {}",
-            'mi_unlock_not_found': "Error: ¡miunlock no encontrado!",
-            'mi_unlock_completed': "Mi Unlock Tool ha finalizado",
-            'mi_unlock_finished': "Programa finalizado",
-            'mi_unlock_error': "Error: {}",
-            'mi_unlock_critical_error': "Error crítico: {}",
-            'mi_unlock_close': "Cerrar",
-            'mi_unlock_input_label': "Entrada",
-            'mi_unlock_input_placeholder': "Ingrese respuesta y presione Enter...",
-            'mi_unlock_send_btn': "Enviar",
-            'mi_unlock_input_prefix': "→ {}",
-            'mi_unlock_input_error': "Error al enviar entrada: {}",
-            'mi_unlock_stdout_error': "Error al leer stdout: {}",
-            'mi_unlock_stderr_error': "Error al leer stderr: {}",
-            'mi_unlock_auto_sending': "→ Enviando Enter automáticamente...",
-            'mi_unlock_auto_send_error': "Error de envío automático: {}",
-            'mi_unlock_read_error': "Error de lectura: {}",
-            'mi_unlock_process_exit': "Proceso finalizado con código: {}",
-            'mi_unlock_initial_enter': "→ Enviando Enter inicial automáticamente...",
-            'mi_unlock_auto_send_final': "→ Enviando Enter final automáticamente...",
-            'pre_generation_title': "GENERACIÓN PRELIMINAR DE DEVICE ID:",
-            'pre_generation_main': "  Device_id principal: {}",
-            'pre_generation_spam1': "  Spam device_id #1: {}",
-            'pre_generation_spam2': "  Spam device_id #2: {}",
-            'pre_generation_spam3': "  Spam device_id #3: {}",
-            'pre_generation_spam4': "  Spam device_id #4: {}",
-            'pre_generation_spam5': "  Spam device_id #5: {}",
-            'logs_sent': "Logs enviados correctamente al servidor",
-            'logs_send_error': "Error al enviar logs: {}",
-            'spam_using_device_id': "[Spam #{}] Usando device_id: {}",
-            'send_with_token': "Enviando con token #{}",
-            # New keys
-            'tcp_ping_label': "Ping TCP",
-            'http_ping_label': "Ping HTTP",
-            'measuring_pings': "Midiendo pings (HTTP y TCP)...",
-            'scheduling_requests': "Programando solicitudes...",
-            'http_request': "Solicitud HTTP #{}",
-            'tcp_request': "Solicitud TCP #{}",
-            'ping_measure_done': "Medición de ping completada.",
-            'ping_measure_time_come': "Ha llegado el momento de medir el ping, comenzando ahora.",
-            'ping_http_default': "No se pudo medir el ping HTTP, usando valor predeterminado: {} ms",
-            'ping_tcp_default': "No se pudo medir el ping TCP, usando valor predeterminado: {} ms",
-            'ping_measure_result': "Medición completada. HTTP: {:.2f} ms, TCP: {:.2f} ms",
-            'http_request_log': "Solicitud HTTP #{}: device_id={}, enviando en {:.3f}s",
-            'tcp_request_log': "Solicitud TCP #{}: device_id={}, enviando en {:.3f}s",
-            'mi_unlock_label': "Mi Unlock",
-            'mi_unlock_desc': (
-                "Herramienta para desbloquear con Mi Unlock\n"
-                "Por: pktloss, New G3n\n"
-                "Versión: 8.1"
-            ),
-            'mi_unlock_python_not_found': "Python: no encontrado",
-            'mi_unlock_python_found_label': "Python: {}",
-            'mi_unlock_package_not_installed': "miunlock: no instalado",
-            'mi_unlock_package_installed': "miunlock: instalado",
-            'mi_unlock_start_button': "Iniciar Mi Unlock",
-            'mi_unlock_process_interrupted': "Proceso interrumpido por el usuario",
-            'mi_unlock_log_title': "Registro de Ejecución",
-            'mi_unlock_drivers_button': "Descargar controladores",
-        }
-
-    def get_chinese(self):
-        return {
-            'title': "小米解锁工具",
-            'main_title': "小米解锁工具",
-            'desc': (
-                "自动提交解锁申请的工具\n"
-                "作者: pktloss, New G3n\n"
-                "版本: 8.1"
-            ),
-            'desc_manual': (
-                "手动模式 - 手动选择提交时间\n"
-                "作者: pktloss, New G3n\n"
-                "版本: 8.1"
-            ),
-            'params': "参数",
-            'tab_unlock': "提交申请",
-            'tab_settings': "设置和说明",
-            'tab_mi_unlock': "Mi Unlock",
-            'log_success_prefix': "成功！",
-            'log_code_message': "代码: {code} | 消息: {msg}",
-            'log_request_parse_error': "[响应处理错误] 无法解析JSON: {data}",
-            'log_request_failed_no_response': "[错误] 无法发送请求（无响应）",
-            'log_request_exception': "[请求错误] {error}",
-            'cookie_label': "New_bbs_ServiceToken:",
-            'cookie_placeholder': "在此粘贴您的令牌...",
-            'timings_btn': "定时设置",
-            'timings_dialog_title': "定时设置",
-            'timings_desc': "选择在 23:59:59 自动发送请求的时间偏移（毫秒）:",
-            'timings_region_default': "地区: 欧洲 (默认选择 6 个时间点)",
-            'timings_min_warning': "至少选择 1 个时间点！",
-            'timings_risk_warning': "⚠️ 选择过多请求可能导致临时封禁申请提交，而在错误的时间选择过少的时间点可能会导致提交失败。",
-            'timings_count_label': "已选: {} / {}",
-            'timings_reset_btn': "恢复默认设置",
-            'timings_save_btn': "保存并关闭",
-            'sections_menu': "栏目菜单",
-            'profiles_btn': "预设方案",
-            'profiles_title': "定时预设方案",
-            'profile_europe': "欧洲",
-            'profile_asia': "亚洲",
-            'profile_usa_africa': "美洲 / 非洲",
-            'color_picker_title': "主题颜色选择",
-            'color_picker_accept': "接受",
-            'color_picker_cancel': "关闭",
-            'color_picker_current': "当前：",
-            'color_picker_selected': "已选颜色：",
-            'color_picker_palette': "预设调色板：",
-            'color_picker_red': "红色 (R)",
-            'color_picker_green': "绿色 (G)",
-            'color_picker_blue': "蓝色 (B)",
-            'animations_coming_soon': "动画将在未来添加",
-            'copy_address_btn': "📋 复制",
-            'address_copied': "✓ 已复制！",
-            'timings_slots_title': "配置 15 个定时点 (秒:毫秒):",
-            'login_btn': "登录小米账号",
-            'check_eligibility_btn': "检查申请资格",
-            'checking_eligibility': "正在检查账户申请资格...",
-            'eligibility_eligible_title': "资格检查",
-            'login_title': "小米账号授权",
-            'login_subtitle': "自动获取 New_bbs_serviceToken",
-            'login_tab_qr': "二维码 / 浏览器",
-            'login_tab_existing': "已保存账号",
-            'login_existing_found': "检测到已保存的小米账号会话",
-            'login_existing_id': "账号 ID: {}",
-            'login_use_existing_btn': "⚡ 使用此账号",
-            'login_qr_scan_tip': "请使用小米社区 App 或小米手机相机扫描二维码",
-            'login_open_browser_btn': "🌐 在浏览器中登录",
-            'login_refresh_qr': "🔄 刷新二维码",
-            'login_waiting': "等待授权确认...",
-            'login_qr_expired': "二维码已过期，请点击“刷新二维码”。",
-            'login_loading_qr': "⏳ 正在加载二维码...",
-            'login_browser_opened': "已在浏览器中打开登录页面，等待完成...",
-            'login_refreshing_qr': "正在刷新二维码...",
-            'login_qr_fetch_error': "获取二维码失败: {}",
-            'login_authorized_extracting': "授权已确认！正在提取令牌...",
-            'login_extracting_token': "正在提取令牌...",
-            'login_session_expired': "会话已过期",
-            'login_success': "授权成功！已获取 new_bbs_serviceToken。",
-            'login_error': "授权错误: {}",
-            'login_token_extract_error': "未能从服务器响应中提取令牌。",
-            'close_btn': "关闭",
-            'log_token_check_success': "令牌与状态检查成功通过。",
-            'log_token_check_skipped': "警告：设置中已禁用令牌验证，继续执行...",
-            'log_mode2_selected': "已选择自动模式 #2（在 23:59:59 进行 HTTP 连续请求）",
-            'log_mode2_ntp_saved': "自动模式 #2：NTP 时间同步已保存，无需测量延迟模式",
-            'status_mode2_waiting': "自动模式 #2：等待 23:59:59",
-            'log_mode2_beijing_reached': "自动模式 #2：已到达北京时间 23:59:59",
-            'status_mode2_sending': "自动模式 #2：正在发送 HTTP 数据包",
-            'mode2_prefix': "自动模式 #2",
-            'mode2_timing': "计时",
-            'log_mode2_plan_sent': "HTTP 连续请求计划已分发",
-            'mode2_using_device_id': "[自动模式 #2 HTTP #{}] 使用 device_id: {}",
-            'request_prefix': "请求",
-            'req_using_device_id': "[请求 #{}] 使用 device_id: {}",
-            'log_ping_start_http_tcp': "开始测量 HTTP 和 TCP 延迟...",
-            'log_ping_avg_http': "平均 HTTP 延迟: {:.2f} 毫秒",
-            'log_ping_http_failed': "无法测量 HTTP 延迟",
-            'log_ping_avg_tcp': "平均 TCP 延迟: {:.2f} 毫秒",
-            'log_ping_tcp_failed': "无法测量 TCP 延迟",
-            'status_get_failed': "[错误] 无法获取解锁状态。",
-            'status_app_approved_checking': "[状态] 申请已获批准，正在检查状态...",
-            'status_app_rejected_100001': "[状态] 申请被拒绝，请求错误（代码 100001）。",
-            'status_app_possibly_approved': "[状态] 申请可能已获批准，正在检查状态...",
-            'success_dialog_title': "成功！",
-            'success_dialog_message': "成功！请尝试绑定您的账号。",
-            'theme_dark_only': "深色主题（仅提供深色主题）",
-            'confirm': "我确认可能面临账户封禁的风险",
-            'info': "信息",
-            'status_ready': "准备就绪",
-            'ping': "延迟: 未测量",
-            'time': "时间: 未同步",
-            'start_btn': "开始申请",
-            'instructions_btn': "说明和脚本设置",
-            'exit_btn': "退出",
-            'log': "执行日志",
-            'clear_log_btn': "清除",
-            'unlock_start': "开始解锁过程...",
-            'device_id_gen': "生成的deviceId: {}",
-            'ping_start': "开始计算延迟...",
-            'ping_server': "{} 的延迟: {:.2f} 毫秒",
-            'ping_failed': "无法获取服务器 {} 的延迟",
-            'ping_error': "ping {} 时出错: {}",
-            'open_miflash': "小米解锁工具",
-            'social_telegram': "Telegram",
-            'social_reddit': "Reddit",
-            'social_github': "GitHub",
-            'social_site_script': "脚本网站",
-            'theme_color_label': '主题颜色',
-            'theme_color_picker': '选择颜色',
-            'theme_color_apply': '应用',
-            'theme_color_hint': '输入 HEX (#RRGGBB) 或 RGB (R,G,B)',
-            'theme_color_error_title': '颜色错误',
-            'theme_color_error': '请输入有效的 HEX (#RRGGBB) 或 RGB (R,G,B)。',
-            'theme_color_placeholder': '#D0BCFF',
-            'ping_default': "无法获取任何服务器的延迟！\n使用默认值: {} 毫秒",
-            'ping_avg': "平均延迟: {:.2f} 毫秒",
-            'ntp_connect': "尝试连接到NTP服务器: {}",
-            'ntp_time': "从服务器 {} 接收到的北京时间: {}",
-            'update_not_available': "未找到更新",
-            'update_check_error': "检查更新时出错",
-            'ntp_failed': "无法连接到任何NTP服务器。",
-            'time_wait': "等待ping时间（北京时间23:59:30）...",
-            'target_time': "等待至 {}（根据延迟 {} 毫秒调整以在午夜到达）",
-            'target_time_manual': "等待至 {}（手动模式）",
-            'time_reached': "时间到达: {}. 开始发送请求...",
-            'cookie_skipped': "根据设置跳过cookie检查",
-            'cookie_expired': "Cookie已过期，请更新",
-            'account_ready': "[状态] 账户可以提交解锁申请。",
-            'account_blocked': "[状态] 账户被禁止提交申请直至 {} (月/日)。",
-            'account_new': "[状态] 账户创建不足30天。",
-            'account_approved': "[状态] 申请已批准，可在 {} 前解锁。",
-            'account_unknown': "[错误] 未知状态。",
-            'status_error': "[状态检查错误] {}",
-            'request_sent': "\n在 {} (UTC+8) 发送请求",
-            'response_received': "在 {} (UTC+8) 收到响应",
-            'request_failed': "[错误] 无法发送请求",
-            'response_error': "[响应处理错误] {}",
-            'request_error': "[请求错误] {}",
-            'confirm_warning': "请确认您了解所有风险！",
-            'cookie_error': "请输入cookie值！",
-            'token_status_check_failed': "错误：令牌/状态检查失败。提交已停止。若要绕过检查，请关闭“在提交前禁用Token Cookie检查”。",
-            'time_error': "无法同步时间！",
-            'settings_saved': "\n设置已保存：",
-            'cookie_check': "Token Cookie检查: {}",
-            'default_ping': "默认延迟: {} 毫秒",
-            'ping_note': "如果无法测量服务器延迟，将使用此值。",
-            'saved': "设置保存成功！",
-            'instructions_title': "说明和脚本设置",
-            'about_title': "关于",
-            'about_content': (
-                "自动发送解锁引导加载程序请求的工具\n"
-                "适用于运行HyperOS的小米设备\n\n"
-                "脚本版本: 8.1"
-            ),
-            'general_title': "要求",
-            'general_content': (
-                "1. 小米账户必须超过30天\n \n"
-                "2. Mi Community账户必须设置为\n \n"
-                "全球区域\n \n"
-                "3. 除中国ROM (CNXM)外的所有设备\n"
-                "均可解锁\n \n"
-                "4. 设备运行HyperOS"
-            ),
-            'firefox_title': "FireFox | Edge",
-            'firefox_content': (
-                "1. 下载Cookie Editor扩展\n\n"
-                "2. 登录您的账户（先退出）\n"
-                "在小米社区网站:\n\n"
-                "http://c.mi.com/global\n"
-                "或 \n"
-                "http://mi.com\n\n"
-                "3. 在Cookie Editor窗口中提取\n"
-                "new_bbs_token并复制\n\n"
-                "重要说明:\n \n"
-                "1. 脚本中的所有时间均为北京时间"
-            ),
-            'chrome_title': "Chrome",
-            'chrome_content': (
-                "1. 登录您的账户（先退出）\n"
-                "在小米社区网站:\n"
-                "https://c.mi.com/global\n"
-                "或 \n"
-                "https://mi.com\n\n"
-                "2. 在浏览器地址栏输入命令:\n\n"
-                "javascript :(function(){var token=document.cookie.match(/popRunToken=([^;]+)/);"
-                "if(token){prompt(\"复制令牌:\", token[1]);}"
-                "else{alert(\"未找到令牌\");}})()\n\n"
-                "*将命令粘贴到浏览器地址栏时，请记得删除javascript后面的空格*\n\n"
-                "3. 从弹出窗口复制令牌值\n\n"
-                "重要说明:\n \n"
-                "1. 脚本中的所有时间均为北京时间"
-            ),
-            'trouble_title': "故障排除",
-            'trouble_content': """问题：CookieEditor不显示new_bbs_serviceToken
-
-解决方案：
-
-1. 刷新页面
-
-2. 退出并重新登录
-
-问题：Cookie过期或不起作用
-
-可能的原因：
-
-• 账户区域不是全球（切换它）
-
-• Cookie确实已过期
-
-问题：达到请求限制
-
-解决方案：
-
-在手机设置中检查Mi Unlock状态
-
-问题：错误10001和其他
-
-解决方案：
-
-脚本无法提交请求
-
-联系开发者：
-
-• 通过Telegram群组：
-
-https://t.me/miunlocktoolrevamp""",
-            'authors_title': "作者",
-            'authors_developers_title': "脚本开发者",
-            'authors_pc_cli_dev': "PC与CLI版本开发者",
-            'authors_web_android_dev': "网站与Android版本开发者",
-            'authors_base_script': "脚本基于以下脚本开发：",
-            'authors_social_links': "社交媒体链接",
-            'authors_donate_title': "赞助开发",
-            'authors_donate_btn': "DonationAlerts",
-            'authors_crypto_network': "USDT TON网络",
-            'authors_content': """脚本开发者:
-• pktloss, New G3n
-
-PC与CLI版本开发者:
-• New G3n
-
-网站与Android版本开发者:
-• pktloss
-
-脚本基于以下脚本开发：
-• Vierta
-
-社交媒体链接:
-• Telegram: https://t.me/miunlocktoolrevamp
-• 4PDA: https://4pda.to/forum/index.php?showtopic=721838&view=findpost&p=145201115
-• GitHub: https://github.com/AsInsideOut/miunlocktool
-• 网站: https://miunlock.su/
-
-赞助开发:
-• DonationAlerts: https://dalink.to/asinsideout
-• 加密货币钱包：
-UQBCkvXTF-NiT7P8g0G-4oiAdsU81rMWJNYBTxDrbl76FabG
-USDT TON网络
-
-脚本版本：8.1""",
-            'cookie_checkbox': "在提交前禁用Token Cookie检查",
-            'final_unlock_checkbox': "提交已完成。无论结果如何，都请尝试绑定手机。",
-            'ping_label': "默认延迟（毫秒）:",
-            'color_theme_label': "颜色主题:",
-            'color_theme_xiaomi_orange': "小米橙色",
-            'color_theme_red_sun': "红日",
-            'color_theme_blue_world': "蓝色世界",
-            'save_btn': "保存",
-            'close_btn': "关闭",
-            'ping_error_title': "错误",
-            'ping_error_msg': "延迟必须为正数！",
-            'cookie_error_title': "错误",
-            'error_title': "错误",
-            'account_blocked_title': "信息",
-            'account_new_title': "信息",
-            'account_approved_title': "成功",
-            'unknown_status_title': "错误",
-            'install_error': "安装错误",
-            'import_error': "导入错误",
-            'settings': "设置",
-            'cookie_check_state': "已禁用",
-            'ban_risk': "我确认可能面临账户封禁的风险",
-            'submit_application': "开始申请",
-            'script_info': "说明和脚本设置",
-            'exit': "退出",
-            'execution_log': "执行日志",
-            'clear_log_btn': "清除",
-            'unlock_process': "开始解锁过程...",
-            'auto_mode': "自动模式",
-            'auto_mode_1': "自动模式 1",
-            'auto_mode_2': "自动模式",
-            'manual_mode': "手动模式",
-            'manual_time_label': "提交时间（秒）:",
-            'manual_time_hint': "58.5 - 59.8（例如：59.1）",
-            'manual_mode_start': "手动模式：在23:59:{}发送",
-            'manual_time_error': "时间无效。请使用格式58.5 - 59.8",
-            'application_not_submitted': "[状态] 申请未提交，超出限制，请在 {} (月/日) 重试。",
-            'device_binding_hint': "尝试在设置中的Mi Unlock状态部分绑定设备",
-            'theme_label': "界面主题:",
-            'theme_system': "系统",
-            'theme_light': "浅色",
-            'theme_dark': "深色",
-            'theme_locked_notice': "暂时仅可使用深色主题",
-            'mode_label': "操作模式:",
-            'cookies_title': "获取Cookies",
-            'expand_cookies': "▶ 获取Cookies",
-            'collapse_cookies': "▼ 获取Cookies",
-            'check_updates': "检查更新",
-            'update_available': "有新更新可用",
-            'update_not_available': "未找到更新",
-            'update_checking': "正在检查更新...",
-            'update_error': "检查更新时出错",
-            'current_version': "当前版本: {}",
-            'your_region': "您的地区: {}",
-            'header_region': "地区: {}",
-            'latest_version': "最新版本: {}",
-            'update_btn_ok': "好的",
-            'update_btn_update': "更新",
-            'update_message': "新版本 {} 可用！是否前往下载页面？",
-            'time_synchronized': "时间已同步",
-            'ms': "毫秒",
-            'default': "默认",
-            'welcome_title': "小米解锁工具",
-            'welcome_text': (
-                "欢迎使用小米解锁工具！\n\n"
-                "重要警告：\n\n"
-                "使用前请仔细阅读说明！\n\n"
-                "1. 使用此工具可能导致提交申请被禁止。\n\n"
-                "2. 此工具仅适用于全球版HyperOS设备\n"
-                "   不适用于中国型号。\n\n"
-                "3. 要求：\n"
-                "   • 小米账户超过30天\n"
-                "   • Mi Community账户设置为全球区域\n"
-                "   • 设备运行HyperOS 1-3\n\n"
-                "4. 使用此工具即表示您同意开发者不对您的设备承担任何责任。\n\n"
-                "点击'继续'开始。"
-            ),
-            'welcome_btn': "继续",
-            'ping_hint': "如果无法测量到服务器的延迟，将使用此值。",
-            'color_theme_xiaomi': "小米橙色",
-            'color_theme_blue': "蓝色世界",
-            'color_theme_red': "红日",
-            'language_label': "语言",
-            'log_to_txt_checkbox': "记录到TXT文件",
-            'animations_checkbox': "动画",
-            'animations_development': "开发中",
-            'input_label': "输入",
-            'application_status': "申请状态：{}",
-            'application_status_not_sent': "未发送",
-            'application_status_sending': "发送中",
-            'application_status_success': "成功",
-            'application_status_unknown': "未知",
-            'application_status_failed': "未成功",
-            'spam_mode_checkbox': "垃圾邮件发送（自动模式下）",
-            'spam_mode_desc': "在23:59:58.6、58.8秒发送请求（根据延迟调整）。\n如果禁用，则在最佳时间发送单个请求。",
-            'ping_not_measured_manual': "延迟: 未测量（手动模式）",
-            'log_auto_mode_spam_selected': "选择了自动模式（垃圾邮件 - 5个请求）",
-            'log_auto_mode_single_selected': "选择了自动模式（单个请求）",
-            'log_manual_mode_selected': "选择了手动模式",
-            'log_time_gt_2355': "时间 > 23:58。开始前同步时间...",
-            'log_time_sync_success': "时间同步成功！",
-            'log_ping_wait': "等待在23:59:30（北京时间）测量延迟...",
-            'status_ping_wait': "等待23:59:30测量延迟...",
-            'log_ping_time_passed': "延迟测量时间已过。正在同步并立即测量...",
-            'log_ping_start': "延迟测量时间到！正在测量...",
-            'log_measuring_ping': "正在测量服务器延迟...",
-            'log_ping_measured': "测得延迟: {} ms",
-            'log_time_updated': "时间更新: {}",
-            'log_resync_error': "重新同步错误，继续使用当前计时器。",
-            'log_normal_mode_ping': "正常模式：计算延迟...",
-            'log_calculated_send_time': "计算发送时间（以在午夜到达）: 23:59:{}",
-            'log_spam_mode_targets': "垃圾邮件模式：目标时间（延迟调整后）: {}",
-            'status_spam_wait': "等待垃圾邮件攻击...",
-            'log_spam_sending_at': "[垃圾邮件 #{}] 在23:59:{}s发送请求",
-            'log_spam_new_device_id': "[垃圾邮件 #{}] 新deviceId: {}",
-            'log_spam_response_prefix': "[垃圾邮件 #{}] 时间: {}s",
-            'log_spam_success_prefix': "成功！",
-            'log_spam_response_format': "{} | 代码: {} | {}",
-            'log_spam_parse_error': "[垃圾邮件 #{}] 解析响应错误: {}",
-            'log_spam_no_response': "[垃圾邮件 #{}] 服务器无响应",
-            'log_spam_send_error': "[垃圾邮件 #{}] 发送请求错误: {}",
-            'login_title': "小米账户登录",
-            'login_user_label': "小米账户ID / 邮箱 / 电话:",
-            'login_user_placeholder': "输入您的登录名",
-            'login_pwd_label': "密码:",
-            'login_pwd_placeholder': "********",
-            'wb_instruction': "1. 点击下面的按钮在浏览器中打开确认页面。\n2. 在页面上看到 'R':'','S':'OK' 后，从地址栏复制完整链接。",
-            'wb_instruction_after_open': "将完整链接粘贴到下面的字段中。",
-            'wb_id_label': "确认链接 (wb_id):",
-            'wb_id_placeholder': "在此粘贴链接...",
-            'open_confirmation_page': "打开确认页面",
-            'login_button': "登录并获取令牌",
-            'login_disabled_notice': "暂时不可用",
-            'logging_in': "登录中...",
-            'login_fields_error': "请填写所有字段（登录名、密码和链接）！",
-            'login_success': "登录成功！已获取令牌。",
-            'login_failed': "登录失败",
-            'login_failed_generic': "登录失败。请检查您的凭据。",
-            'login_token_extract_error': "无法自动提取令牌。请从 c.mi.com/global 手动复制。",
-            'mi_unlock_title': "Mi Unlock 工具",
-            'mi_unlock_checking_python': "检查 Python 安装",
-            'mi_unlock_upgrading': '正在升级 miunlock...',
-            'mi_unlock_python_found': "找到 Python: {}",
-            'mi_unlock_python_not_found': "未找到 Python！",
-            'mi_unlock_python_error_msg': (
-                "未找到 Python！\n\n"
-                "Mi Unlock 工具需要 Python 3.8 或更高版本。\n\n"
-                "从官方网站下载 Python：\n"
-                "https://www.python.org/downloads/\n\n"
-                "重要：安装时，请确保勾选\n"
-                "'Add Python to PATH'（将 Python 添加到 PATH）"
-            ),
-            'mi_unlock_installing': "正在安装 miunlock 包...",
-            'mi_unlock_install_cmd': "正在执行：pip install miunlock",
-            'mi_unlock_already_installed': "miunlock 包已安装",
-            'mi_unlock_install_success': "miunlock 包安装成功",
-            'mi_unlock_install_error': "安装 miunlock 失败！",
-            'mi_unlock_starting': "正在启动 Mi Unlock 工具...",
-            'mi_unlock_launching': "正在启动 miunlock...",
-            'mi_unlock_file_not_found': "文件未找到：{}",
-            'mi_unlock_not_found': "错误：未找到 miunlock！",
-            'mi_unlock_completed': "Mi Unlock 工具已完成",
-            'mi_unlock_finished': "程序已完成",
-            'mi_unlock_error': "错误：{}",
-            'mi_unlock_critical_error': "严重错误：{}",
-            'mi_unlock_close': "关闭",
-            'mi_unlock_input_label': "输入",
-            'mi_unlock_input_placeholder': "输入响应并按 Enter...",
-            'mi_unlock_send_btn': "发送",
-            'mi_unlock_input_prefix': "→ {}",
-            'mi_unlock_input_error': "输入发送错误：{}",
-            'mi_unlock_stdout_error': "读取 stdout 错误：{}",
-            'mi_unlock_stderr_error': "读取 stderr 错误：{}",
-            'mi_unlock_auto_sending': "→ 自动发送 Enter...",
-            'mi_unlock_auto_send_error': "自动发送错误: {}",
-            'mi_unlock_read_error': "读取错误: {}",
-            'mi_unlock_process_exit': "进程退出代码: {}",
-            'mi_unlock_initial_enter': "→ 自动发送初始 Enter...",
-            'mi_unlock_auto_send_final': "→ 自动发送最终 Enter...",
-            'pre_generation_title': "预生成 DEVICE ID：",
-            'pre_generation_main': "  主 device_id: {}",
-            'pre_generation_spam1': "  垃圾请求 device_id #1: {}",
-            'pre_generation_spam2': "  垃圾请求 device_id #2: {}",
-            'pre_generation_spam3': "  垃圾请求 device_id #3: {}",
-            'pre_generation_spam4': "  垃圾请求 device_id #4: {}",
-            'pre_generation_spam5': "  垃圾请求 device_id #5: {}",
-            'logs_sent': "日志已成功发送到服务器",
-            'logs_send_error': "发送日志时出错：{}",
-            'spam_using_device_id': "[垃圾请求 #{}] 使用 device_id: {}",
-            'send_with_token': "使用令牌 #{} 发送",
-            # New keys
-            'tcp_ping_label': "TCP 延迟",
-            'http_ping_label': "HTTP 延迟",
-            'measuring_pings': "正在测量延迟 (HTTP 和 TCP)...",
-            'scheduling_requests': "正在安排请求...",
-            'http_request': "HTTP 请求 #{}",
-            'tcp_request': "TCP 请求 #{}",
-            'ping_measure_done': "延迟测量完成。",
-            'ping_measure_time_come': "延迟测量时间已到，现在开始。",
-            'ping_http_default': "无法测量 HTTP 延迟，使用默认值：{} 毫秒",
-            'ping_tcp_default': "无法测量 TCP 延迟，使用默认值：{} 毫秒",
-            'ping_measure_result': "测量完成。HTTP：{:.2f} 毫秒，TCP：{:.2f} 毫秒",
-            'http_request_log': "HTTP 请求 #{}：device_id={}，将在 {:.3f} 秒后发送",
-            'tcp_request_log': "TCP 请求 #{}：device_id={}，将在 {:.3f} 秒后发送",
-            'mi_unlock_label': "Mi Unlock",
-            'mi_unlock_desc': (
-                "使用 Mi Unlock 解锁的工具\n"
-                "作者：pktloss, New G3n\n"
-                "版本：8.1"
-            ),
-            'mi_unlock_python_not_found': "Python：未找到",
-            'mi_unlock_python_found_label': "Python：{}",
-            'mi_unlock_package_not_installed': "miunlock：未安装",
-            'mi_unlock_package_installed': "miunlock：已安装",
-            'mi_unlock_start_button': "启动 Mi Unlock",
-            'mi_unlock_process_interrupted': "进程被用户中断",
-            'mi_unlock_log_title': "执行日志",
-            'mi_unlock_drivers_button': "下载驱动",
-        }
-
-    def get_portuguese(self):
-        return {
-            'title': "Xiaomi Unlock Tool",
-            'main_title': "Xiaomi Unlock Tool",
-            'desc': (
-                "Ferramenta para envio automático de solicitação de desbloqueio\n"
-                "Por: pktloss, New G3n\n"
-                "Versão: 8.1"
-            ),
-            'desc_manual': (
-                "Modo manual - selecione o horário de envio manualmente\n"
-                "Por: pktloss, New G3n\n"
-                "Versão: 8.1"
-            ),
-            'params': "Parâmetros",
-            'tab_unlock': "Enviar Aplicação",
-            'tab_settings': "Configurações e Instruções",
-            'tab_mi_unlock': "Mi Unlock",
-            'log_success_prefix': "SUCESSO!",
-            'log_code_message': "Código: {code} | Mensagem: {msg}",
-            'log_request_parse_error': "[Erro ao processar resposta] Falha ao analisar JSON: {data}",
-            'log_request_failed_no_response': "[Erro] Falha ao enviar solicitação (sem resposta)",
-            'log_request_exception': "[Erro na solicitação] {error}",
-            'cookie_label': "New_bbs_ServiceToken:",
-            'cookie_placeholder': "Cole seu token aqui...",
-            'timings_btn': "Configuração de Timings",
-            'timings_dialog_title': "Configuração de Timings",
-            'timings_desc': "Selecione os horários (deslocamentos em ms) para envio automático às 23:59:59:",
-            'timings_region_default': "Região: Europa (6 horários selecionados por padrão)",
-            'timings_min_warning': "Pelo menos 1 horário deve ser selecionado!",
-            'timings_risk_warning': "⚠️ Selecionar muitas solicitações pode levar a um banimento temporário do envio de inscrições, enquanto selecionar poucos horários no momento errado pode causar falha no envio.",
-            'timings_count_label': "Selecionados: {} de {}",
-            'timings_reset_btn': "Restaurar Padrão",
-            'timings_save_btn': "Salvar e Fechar",
-            'sections_menu': "Menu de Seções",
-            'profiles_btn': "Perfis",
-            'profiles_title': "Perfis de Timings",
-            'profile_europe': "Europa",
-            'profile_asia': "Ásia",
-            'profile_usa_africa': "EUA / África",
-            'color_picker_title': "Seletor de cor do tema",
-            'color_picker_accept': "Aceitar",
-            'color_picker_cancel': "Fechar",
-            'color_picker_current': "Atual:",
-            'color_picker_selected': "Cor selecionada:",
-            'color_picker_palette': "Paleta de cores predefinidas:",
-            'color_picker_red': "Vermelho (R)",
-            'color_picker_green': "Verde (G)",
-            'color_picker_blue': "Azul (B)",
-            'animations_coming_soon': "As animações serão adicionadas no futuro",
-            'copy_address_btn': "📋 Copiar",
-            'address_copied': "✓ Copiado!",
-            'timings_slots_title': "Configurar 15 slots de timing (seg:ms):",
-            'login_btn': "Entrar na Conta",
-            'check_eligibility_btn': "Verificar elegibilidade",
-            'checking_eligibility': "Verificando elegibilidade da conta...",
-            'eligibility_eligible_title': "Verificação de elegibilidade",
-            'login_title': "Autorização de Conta Xiaomi",
-            'login_subtitle': "Extração automática de New_bbs_serviceToken",
-            'login_tab_qr': "Código QR / Navegador",
-            'login_tab_existing': "Conta Salva",
-            'login_existing_found': "Sessão de Conta Mi salva detectada",
-            'login_existing_id': "ID da Conta: {}",
-            'login_use_existing_btn': "⚡ Usar esta conta",
-            'login_qr_scan_tip': "Escaneie o código QR no app Mi Community\nou com a câmera do seu celular Xiaomi",
-            'login_open_browser_btn': "🌐 Fazer Login no Navegador",
-            'login_refresh_qr': "🔄 Atualizar Código QR",
-            'login_waiting': "Aguardando confirmação de autorização...",
-            'login_qr_expired': "Código QR expirado. Clique em 'Atualizar Código QR'.",
-            'login_loading_qr': "⏳ Carregando código QR...",
-            'login_browser_opened': "Página de login aberta no navegador. Aguardando conclusão...",
-            'login_refreshing_qr': "Atualizando código QR...",
-            'login_qr_fetch_error': "Falha ao obter código QR: {}",
-            'login_authorized_extracting': "Autorização confirmada! Extraindo token...",
-            'login_extracting_token': "Extraindo token...",
-            'login_session_expired': "Sessão expirada",
-            'login_success': "Autorização bem-sucedida! new_bbs_serviceToken obtido.",
-            'login_error': "Erro de autorização: {}",
-            'login_token_extract_error': "Falha ao extrair token da resposta do servidor.",
-            'close_btn': "Fechar",
-            'log_token_check_success': "Verificação de token e status aprovada com sucesso.",
-            'log_token_check_skipped': "Aviso: a verificação de token está desativada nas configurações, continuando...",
-            'log_mode2_selected': "Modo Automático #2 selecionado (spam HTTP visando 23:59:59)",
-            'log_mode2_ntp_saved': "Modo Automático #2: Sincronização NTP ativa, modo sem medição de ping",
-            'status_mode2_waiting': "Modo Automático #2: aguardando 23:59:59",
-            'log_mode2_beijing_reached': "Modo Automático #2: hora de Pequim 23:59:59 atingida",
-            'status_mode2_sending': "Modo Automático #2: enviando pacote HTTP",
-            'mode2_prefix': "Modo Automático #2",
-            'mode2_timing': "temporização",
-            'log_mode2_plan_sent': "Plano de spam HTTP enviado",
-            'mode2_using_device_id': "[Modo Automático #2 HTTP #{}] Usando device_id: {}",
-            'request_prefix': "Solicitação",
-            'req_using_device_id': "[Solicitação #{}] Usando device_id: {}",
-            'log_ping_start_http_tcp': "Iniciando medição de pings HTTP e TCP...",
-            'log_ping_avg_http': "Ping HTTP médio: {:.2f} ms",
-            'log_ping_http_failed': "Falha ao medir ping HTTP",
-            'log_ping_avg_tcp': "Ping TCP médio: {:.2f} ms",
-            'log_ping_tcp_failed': "Falha ao medir ping TCP",
-            'status_get_failed': "[Erro] Falha ao obter status de desbloqueio.",
-            'status_app_approved_checking': "[Status] Aplicação aprovada, verificando status...",
-            'status_app_rejected_100001': "[Status] Aplicação rejeitada, erro de requisição (código 100001).",
-            'status_app_possibly_approved': "[Status] Aplicação possivelmente aprovada, verificando status...",
-            'success_dialog_title': "Sucesso!",
-            'success_dialog_message': "Sucesso! Tente vincular sua conta.",
-            'theme_dark_only': "Tema escuro (apenas tema escuro disponível)",
-            'confirm': "Eu assumo o risco de possível banimento da conta",
-            'info': "Informação",
-            'status_ready': "Pronto para começar",
-            'ping': "Ping: não medido",
-            'time': "Hora: não sincronizada",
-            'start_btn': "Iniciar Aplicação",
-            'instructions_btn': "Instruções e Configurações do Script",
-            'exit_btn': "Sair",
-            'log': "Registro de Execução",
-            'clear_log_btn': "Limpar",
-            'unlock_start': "Iniciando processo de desbloqueio...",
-            'device_id_gen': "DeviceId gerado: {}",
-            'ping_start': "Iniciando cálculo do ping...",
-            'ping_server': "Ping para {}: {:.2f} ms",
-            'ping_failed': "Falha ao obter ping do servidor {}",
-            'ping_error': "Erro ao fazer ping em {}: {}",
-            'open_miflash': "MiFlash Unlock",
-            'social_telegram': "Telegram",
-            'social_reddit': "Reddit",
-            'social_github': "GitHub",
-            'social_site_script': "Site do Script",
-            'theme_color_label': 'Cor do tema',
-            'theme_color_picker': 'Escolher cor',
-            'theme_color_apply': 'Aplicar',
-            'theme_color_hint': 'Digite HEX (#RRGGBB) ou RGB (R,G,B)',
-            'theme_color_error_title': 'Erro de cor',
-            'theme_color_error': 'Digite um HEX (#RRGGBB) ou RGB (R,G,B) válido.',
-            'theme_color_placeholder': '#D0BCFF',
-            'ping_default': "Falha ao obter ping de qualquer servidor!\nUsando valor padrão: {} ms",
-            'ping_avg': "Ping médio: {:.2f} ms",
-            'ntp_connect': "Tentando conectar ao servidor NTP: {}",
-            'ntp_time': "Horário de Pequim recebido do servidor {}: {}",
-            'ntp_failed': "Falha ao conectar a qualquer servidor NTP.",
-            'time_wait': "Aguardando horário para ping (23:59:30 Horário de Pequim)...",
-            'target_time': "Aguardando até {} (ajustado para ping {} ms para chegar à meia-noite)",
-            'target_time_manual': "Aguardando até {} (modo manual)",
-            'update_not_available': "Nenhuma atualização encontrada",
-            'update_check_error': "Erro ao verificar atualizações",
-            'time_reached': "Horário atingido: {}. Iniciando envio da solicitação...",
-            'cookie_skipped': "Verificação de cookie ignorada conforme configurações",
-            'cookie_expired': "Cookie expirou, por favor atualize-o.",
-            'account_ready': "[Status] A conta pode enviar solicitação de desbloqueio.",
-            'account_blocked': "[Status] A conta tem bloqueio de envio até {} (Mês/Dia).",
-            'account_new': "[Status] Conta criada há menos de 30 dias.",
-            'account_approved': "[Status] Solicitação aprovada, desbloqueio possível até {}.",
-            'account_unknown': "[Erro] Status desconhecido.",
-            'status_error': "[Erro na verificação de status] {}",
-            'request_sent': "\nEnviando solicitação às {} (UTC+8)",
-            'response_received': "Resposta recebida às {} (UTC+8)",
-            'request_failed': "[Erro] Falha ao enviar solicitação",
-            'response_error': "[Erro ao processar resposta] {}",
-            'request_error': "[Erro na solicitação] {}",
-            'confirm_warning': "Por favor, confirme que você entende todos os riscos!",
-            'cookie_error': "Insira o valor do cookie!",
-            'token_status_check_failed': "Erro: a verificação do token/status falhou. O envio foi interrompido. Desative 'Desativar verificação do Token Cookie antes do envio' se quiser ignorar a verificação.",
-            'time_error': "Falha ao sincronizar a hora!",
-            'settings_saved': "\nConfigurações salvas:",
-            'cookie_check': "Verificação do Token Cookie: {}",
-            'default_ping': "Ping padrão: {} ms",
-            'ping_note': "Este valor será usado se a medição de ping para os servidores falhar.",
-            'saved': "Configurações salvas com sucesso!",
-            'instructions_title': "Instruções e Configurações",
-            'about_title': "Sobre",
-            'about_content': (
-                "Ferramenta para envio automático de solicitação\n"
-                "para desbloqueio do bootloader em\n"
-                "dispositivos Xiaomi com HyperOS\n\n"
-                "Versão do script: 8.1"
-            ),
-            'general_title': "Requisitos",
-            'general_content': (
-                "1. A conta Mi deve ter mais de 30 dias\n \n"
-                "2. A conta da Mi Community deve ter\n \n"
-                "a região definida como Global\n \n"
-                "3. Desbloqueio disponível para todos os dispositivos\n"
-                "exceto ROM Chinesa (CNXM)\n \n"
-                "4. O dispositivo está executando HyperOS"
-            ),
-            'firefox_title': "FireFox | Edge",
-            'firefox_content': (
-                "1. Baixe a extensão Cookie Editor\n\n"
-                "2. Faça login na sua conta (depois de sair)\n"
-                "no site da Xiaomi Mi Community:\n\n"
-                "http://c.mi.com/global\n"
-                "ou \n"
-                "http://mi.com\n\n"
-                "3. Na janela do Cookie Editor, extraia\n"
-                "new_bbs_token e copie-o\n\n"
-                "Notas importantes:\n \n"
-                "1. Todos os horários no script são de Pequim"
-            ),
-            'chrome_title': "Chrome",
-            'chrome_content': (
-                "1. Faça login na sua conta (depois de sair)\n"
-                "no site da Xiaomi Mi Community:\n"
-                "https://c.mi.com/global\n"
-                "ou \n"
-                "https://mi.com\n\n"
-                "2. Na barra de endereços do navegador, digite o comando:\n\n"
-                "javascript :(function(){var token=document.cookie.match(/popRunToken=([^;]+)/);"
-                "if(token){prompt(\"Copie o token:\", token[1]);}"
-                "else{alert(\"Token não encontrado\");}})()\n\n"
-                "*lembre-se de remover o espaço após javascript ao colar o comando na barra de endereços*\n\n"
-                "3. Copie o valor do token da janela pop-up\n\n"
-                "Notas importantes:\n \n"
-                "1. Todos os horários no script são de Pequim"
-            ),
-            'trouble_title': "Solução de Problemas",
-            'trouble_content': """Problema: O CookieEditor não mostra new_bbs_serviceToken
-
-Solução:
-
-1. Atualize a página
-
-2. Saia e entre novamente
-
-Problema: Cookie expirado ou não funciona
-
-Possíveis causas:
-
-• A região da conta não é Global (altere)
-
-• O cookie realmente expirou
-
-Problema: Limite de solicitações atingido
-
-Solução:
-
-Verifique o status no Mi Unlock nas configurações do telefone
-
-Problema: Erros 10001 e outros
-
-Solução:
-
-O script não conseguiu enviar a solicitação
-
-Contate os desenvolvedores:
-
-• Via grupo do Telegram:
-
-https://t.me/miunlocktoolrevamp""",
-            'authors_title': "Autores",
-            'authors_developers_title': "Desenvolvedores do Script",
-            'authors_pc_cli_dev': "Desenvolvedor da versão PC e CLI",
-            'authors_web_android_dev': "Desenvolvedor do Website e Versão Android",
-            'authors_base_script': "Script baseado no script de:",
-            'authors_social_links': "Links das Redes Sociais",
-            'authors_donate_title': "Doar para o Desenvolvimento",
-            'authors_donate_btn': "DonationAlerts",
-            'authors_crypto_network': "USDT rede TON",
-            'authors_content': """Desenvolvedores do Script:
-• pktloss, New G3n
-
-Desenvolvedor da versão PC e CLI:
-• New G3n
-
-Desenvolvedor do Website e Versão Android:
-• pktloss
-
-Script baseado no script de:
-• Vierta
-
-Links das Redes Sociais:
-• Telegram: https://t.me/miunlocktoolrevamp
-• 4PDA: https://4pda.to/forum/index.php?showtopic=721838&view=findpost&p=145201115
-• GitHub: https://github.com/AsInsideOut/miunlocktool
-• Website: https://miunlock.su/
-
-Doar para o Desenvolvimento:
-• DonationAlerts: https://dalink.to/asinsideout
-• Carteira Cripto:
-UQBCkvXTF-NiT7P8g0G-4oiAdsU81rMWJNYBTxDrbl76FabG
-USDT rede TON
-
-Versão do script: 8.1""",
-            'cookie_checkbox': "Desativar verificação do Token Cookie antes do envio",
-            'final_unlock_checkbox': "A submissão foi concluída. Tente vincular o telefone independentemente do resultado.",
-            'ping_label': "Ping padrão (ms):",
-            'color_theme_label': "Tema de cor:",
-            'color_theme_xiaomi_orange': "Xiaomi Laranja",
-            'color_theme_red_sun': "Sol Vermelho",
-            'color_theme_blue_world': "Mundo Azul",
-            'save_btn': "Salvar",
-            'close_btn': "Fechar",
-            'ping_error_title': "Erro",
-            'ping_error_msg': "O ping deve ser um número positivo!",
-            'cookie_error_title': "Erro",
-            'error_title': "Erro",
-            'account_blocked_title': "Informação",
-            'account_new_title': "Informação",
-            'account_approved_title': "Sucesso",
-            'unknown_status_title': "Erro",
-            'install_error': "Erro de Instalação",
-            'import_error': "Erro de Importação",
-            'settings': "Configurações",
-            'cookie_check_state': "Desativada",
-            'ban_risk': "Eu assumo o risco de possível banimento da conta",
-            'submit_application': "Iniciar Aplicação",
-            'script_info': "Instruções e Configurações",
-            'exit': "Sair",
-            'execution_log': "Registro de Execução",
-            'clear_log_btn': "Limpar",
-            'unlock_process': "Iniciando processo de desbloqueio...",
-            'auto_mode': "Modo Automático",
-            'auto_mode_1': "Modo Automático #1",
-            'auto_mode_2': "Modo Automático",
-            'manual_mode': "Modo Manual",
-            'manual_time_label': "Horário de envio (segundos):",
-            'manual_time_hint': "58.5 - 59.8 (ex: 59.1)",
-            'manual_mode_start': "Modo manual: enviando às 23:59:{}",
-            'manual_time_error': "Horário inválido. Use o formato 58.5 - 59.8",
-            'application_not_submitted': "[Status] Solicitação não enviada, limite excedido, tente novamente em {} (Mês/Dia).",
-            'device_binding_hint': "Tente vincular dispositivos em Configurações, Seção Status do Mi Unlock",
-            'theme_label': "Tema da interface:",
-            'theme_system': "Sistema",
-            'theme_light': "Claro",
-            'theme_dark': "Escuro",
-            'theme_locked_notice': "Temporariamente, apenas o tema escuro está disponível",
-            'mode_label': "Modo de operação:",
-            'cookies_title': "Obtendo Cookies",
-            'expand_cookies': "▶ Obtendo Cookies",
-            'collapse_cookies': "▼ Obtendo Cookies",
-            'check_updates': "Verificar Atualizações",
-            'update_available': "Nova atualização disponível",
-            'update_not_available': "Nenhuma atualização encontrada",
-            'update_checking': "Verificando atualizações...",
-            'update_error': "Erro ao verificar atualizações",
-            'current_version': "Versão atual: {}",
-            'your_region': "Sua região: {}",
-            'header_region': "Região: {}",
-            'latest_version': "Última versão: {}",
-            'update_btn_ok': "Ok",
-            'update_btn_update': "Atualizar",
-            'update_message': "Nova versão {} disponível! Deseja ir para a página de download?",
-            'time_synchronized': "Hora sincronizada",
-            'ms': "ms",
-            'default': "padrão",
-            'welcome_title': "Xiaomi Unlock Tool",
-            'welcome_text': (
-                "Bem-vindo ao Xiaomi Unlock Tool!\n\n"
-                "AVISO IMPORTANTE:\n\n"
-                "ANTES DE USAR, LEIA ATENTAMENTE AS INSTRUÇÕES!\n\n"
-                "1. O uso desta ferramenta pode levar ao bloqueio de envio.\n\n"
-                "2. A ferramenta é SOMENTE para dispositivos com HyperOS Global\n"
-                "   e NÃO funciona com modelos chineses.\n\n"
-                "3. Requisitos:\n"
-                "   • Conta Mi com mais de 30 dias\n"
-                "   • Conta da Mi Community com região Global\n"
-                "   • Dispositivo com HyperOS 1-3\n\n"
-                "4. Ao usar esta ferramenta, você concorda que os desenvolvedores não se responsabilizam por seus dispositivos.\n\n"
-                "Clique em 'Continuar' para começar."
-            ),
-            'welcome_btn': "Continuar",
-            'ping_hint': "Este valor será usado se o ping para os servidores não puder ser medido.",
-            'color_theme_xiaomi': "Xiaomi Laranja",
-            'color_theme_blue': "Mundo Azul",
-            'color_theme_red': "Sol Vermelho",
-            'language_label': "Idioma",
-            'log_to_txt_checkbox': "Registrar em arquivo TXT",
-            'animations_checkbox': "Animações",
-            'animations_development': "Em desenvolvimento",
-            'input_label': "Entrada",
-            'application_status': "Status da aplicação: {}",
-            'application_status_not_sent': "Não enviada",
-            'application_status_sending': "Enviando",
-            'application_status_success': "Bem-sucedida",
-            'application_status_unknown': "Desconhecido",
-            'application_status_failed': "Sem sucesso",
-            'spam_mode_checkbox': "Envio Spam (no Modo Automático)",
-            'spam_mode_desc': "Envia solicitações em 23:59:58.6 e 58.8 (ajustado pelo ping).\nSe desativado, envia uma única solicitação no horário ideal.",
-            'ping_not_measured_manual': "Ping: não medido (modo manual)",
-            'log_auto_mode_spam_selected': "Modo automático selecionado (Spam - 5 solicitações)",
-            'log_auto_mode_single_selected': "Modo automático selecionado (Solicitação única)",
-            'log_manual_mode_selected': "Modo manual selecionado",
-            'log_time_gt_2355': "Hora > 23:58. Sincronizando hora antes de começar...",
-            'log_time_sync_success': "Hora sincronizada com sucesso!",
-            'log_ping_wait': "Aguardando medição de ping às 23:59:30 (Pequim)...",
-            'status_ping_wait': "Aguardando 23:59:30 para medir ping...",
-            'log_ping_time_passed': "Hora de medição de ping passou. Sincronizando e medindo agora...",
-            'log_ping_start': "Hora de medir ping! Executando medição...",
-            'log_measuring_ping': "Medindo ping para os servidores...",
-            'log_ping_measured': "Ping medido: {} ms",
-            'log_time_updated': "Hora atualizada: {}",
-            'log_resync_error': "Erro na ressincronização, continuando com o temporizador atual.",
-            'log_normal_mode_ping': "Modo normal: calculando ping...",
-            'log_calculated_send_time': "Hora de envio calculada (para chegar à meia-noite): 23:59:{}",
-            'log_spam_mode_targets': "MODO SPAM: Horários alvo (após ajuste de ping): {}",
-            'status_spam_wait': "Aguardando ataque spam...",
-            'log_spam_sending_at': "[Spam #{}] Enviando solicitação às 23:59:{}s",
-            'log_spam_new_device_id': "[Spam #{}] Novo deviceId: {}",
-            'log_spam_response_prefix': "[Spam #{}] Hora: {}s",
-            'log_spam_success_prefix': "SUCESSO!",
-            'log_spam_response_format': "{} | Código: {} | {}",
-            'log_spam_parse_error': "[Spam #{}] Erro ao analisar resposta: {}",
-            'log_spam_no_response': "[Spam #{}] Sem resposta do servidor",
-            'log_spam_send_error': "[Spam #{}] Erro ao enviar solicitação: {}",
-            'login_title': "Login na Conta Xiaomi",
-            'login_user_label': "ID do Mi Account / Email / Telefone:",
-            'login_user_placeholder': "Digite seu login",
-            'login_pwd_label': "Senha:",
-            'login_pwd_placeholder': "********",
-            'wb_instruction': "1. Clique no botão abaixo para abrir a página de confirmação no seu navegador.\n2. Após ver a mensagem 'R':'','S':'OK' na página, copie o link completo da barra de endereços.",
-            'wb_instruction_after_open': "Cole o link completo no campo abaixo.",
-            'wb_id_label': "Link de confirmação (wb_id):",
-            'wb_id_placeholder': "Cole o link aqui...",
-            'open_confirmation_page': "Abrir página de confirmação",
-            'login_button': "Fazer Login e Obter Token",
-            'login_disabled_notice': "Temporariamente indisponível",
-            'logging_in': "Entrando...",
-            'login_fields_error': "Preencha todos os campos (login, senha e link)!",
-            'login_success': "Login bem-sucedido! Token obtido.",
-            'login_failed': "Falha no login",
-            'login_failed_generic': "Falha no login. Verifique seus dados.",
-            'login_token_extract_error': "Não foi possível extrair o token automaticamente. Copie-o manualmente do site c.mi.com/global.",
-            'mi_unlock_title': "Mi Unlock Tool",
-            'mi_unlock_checking_python': "Verificando instalação do Python",
-            'mi_unlock_upgrading': 'Atualizando miunlock...',
-            'mi_unlock_python_found': "Python encontrado: {}",
-            'mi_unlock_python_not_found': "Python não encontrado!",
-            'mi_unlock_python_error_msg': (
-                "Python não encontrado!\n\n"
-                "Mi Unlock Tool requer Python 3.8 ou superior.\n\n"
-                "Baixe o Python do site oficial:\n"
-                "https://www.python.org/downloads/\n\n"
-                "⚠️ IMPORTANTE: Durante a instalação, certifique-se de marcar\n"
-                "'Add Python to PATH'"
-            ),
-            'mi_unlock_installing': "Instalando pacote miunlock...",
-            'mi_unlock_install_cmd': "Executando: pip install miunlock",
-            'mi_unlock_already_installed': "Pacote miunlock já está instalado",
-            'mi_unlock_install_success': "Pacote miunlock instalado com sucesso",
-            'mi_unlock_install_error': "Falha ao instalar miunlock!",
-            'mi_unlock_starting': "Iniciando Mi Unlock Tool...",
-            'mi_unlock_launching': "Executando miunlock...",
-            'mi_unlock_file_not_found': "Arquivo não encontrado: {}",
-            'mi_unlock_not_found': "Erro: miunlock não encontrado!",
-            'mi_unlock_completed': "Mi Unlock Tool foi finalizado",
-            'mi_unlock_finished': "Programa finalizado",
-            'mi_unlock_error': "Erro: {}",
-            'mi_unlock_critical_error': "Erro crítico: {}",
-            'mi_unlock_close': "Fechar",
-            'mi_unlock_input_label': "Entrada",
-            'mi_unlock_input_placeholder': "Digite a resposta e pressione Enter...",
-            'mi_unlock_send_btn': "Enviar",
-            'mi_unlock_input_prefix': "→ {}",
-            'mi_unlock_input_error': "Erro ao enviar entrada: {}",
-            'mi_unlock_stdout_error': "Erro ao ler stdout: {}",
-            'mi_unlock_stderr_error': "Erro ao ler stderr: {}",
-            'mi_unlock_auto_sending': "→ Enviando Enter automaticamente...",
-            'mi_unlock_auto_send_error': "Erro de envio automático: {}",
-            'mi_unlock_read_error': "Erro de leitura: {}",
-            'mi_unlock_process_exit': "Processo encerrado com código: {}",
-            'mi_unlock_initial_enter': "→ Enviando Enter inicial automaticamente...",
-            'mi_unlock_auto_send_final': "→ Enviando Enter final automaticamente...",
-            'pre_generation_title': "GERAÇÃO PRELIMINAR DE DEVICE ID:",
-            'pre_generation_main': "  Device_id principal: {}",
-            'pre_generation_spam1': "  Spam device_id #1: {}",
-            'pre_generation_spam2': "  Spam device_id #2: {}",
-            'pre_generation_spam3': "  Spam device_id #3: {}",
-            'pre_generation_spam4': "  Spam device_id #4: {}",
-            'pre_generation_spam5': "  Spam device_id #5: {}",
-            'logs_sent': "Logs enviados com sucesso ao servidor",
-            'logs_send_error': "Erro ao enviar logs: {}",
-            'spam_using_device_id': "[Spam #{}] Usando device_id: {}",
-            'send_with_token': "Enviando com token #{}",
-            # New keys
-            'tcp_ping_label': "Ping TCP",
-            'http_ping_label': "Ping HTTP",
-            'measuring_pings': "Medindo pings (HTTP e TCP)...",
-            'scheduling_requests': "Agendando solicitações...",
-            'http_request': "Solicitação HTTP #{}",
-            'tcp_request': "Solicitação TCP #{}",
-            'ping_measure_done': "Medição de ping concluída.",
-            'ping_measure_time_come': "O momento da medição de ping chegou, começando agora.",
-            'ping_http_default': "Não foi possível medir o ping HTTP, usando valor padrão: {} ms",
-            'ping_tcp_default': "Não foi possível medir o ping TCP, usando valor padrão: {} ms",
-            'ping_measure_result': "Medição concluída. HTTP: {:.2f} ms, TCP: {:.2f} ms",
-            'http_request_log': "Solicitação HTTP #{}: device_id={}, enviando em {:.3f}s",
-            'tcp_request_log': "Solicitação TCP #{}: device_id={}, enviando em {:.3f}s",
-            'mi_unlock_label': "Mi Unlock",
-            'mi_unlock_desc': (
-                "Ferramenta para desbloqueio com Mi Unlock\n"
-                "Por: pktloss, New G3n\n"
-                "Versão: 8.1"
-            ),
-            'mi_unlock_python_not_found': "Python: não encontrado",
-            'mi_unlock_python_found_label': "Python: {}",
-            'mi_unlock_package_not_installed': "miunlock: não instalado",
-            'mi_unlock_package_installed': "miunlock: instalado",
-            'mi_unlock_start_button': "Iniciar Mi Unlock",
-            'mi_unlock_process_interrupted': "Processo interrompido pelo usuário",
-            'mi_unlock_log_title': "Registro de Execução",
-            'mi_unlock_drivers_button': "Baixar Drivers",
-        }
-
-    def _get_version(self):
-        try:
-            from .. import CURRENT_VERSION
-            return CURRENT_VERSION
-        except:
-            return "8.1"
-
-    def tr(self, key):
-        return self.translations[self.language].get(key, key)

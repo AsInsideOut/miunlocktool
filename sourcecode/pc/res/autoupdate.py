@@ -18,15 +18,44 @@ import threading
 import argparse
 import subprocess
 import urllib.request
-import urllib.error
 
 # Default URLs
 UPDATE_CHECK_URL = "https://miunlock.su/version.txt"
 PRIMARY_DOWNLOAD_URL = "https://miunlock.su/download/stable/pc/Latest_Release.zip"
 FALLBACK_DOWNLOAD_URL = "https://miunlock.su/Latest_Release.zip"
 
+UPDATE_CHECK_URL_RU = "https://miunlocktool.ru/version.txt"
+PRIMARY_DOWNLOAD_URL_RU = "https://miunlocktool.ru/download/stable/pc/Latest_Release.zip"
+FALLBACK_DOWNLOAD_URL_RU = "https://miunlocktool.ru/Latest_Release.zip"
+
+
+def get_update_urls(lang=None):
+    """Returns (check_url, primary_url, fallback_url) based on language."""
+    if lang == 'ru':
+        return UPDATE_CHECK_URL_RU, PRIMARY_DOWNLOAD_URL_RU, FALLBACK_DOWNLOAD_URL_RU
+    return UPDATE_CHECK_URL, PRIMARY_DOWNLOAD_URL, FALLBACK_DOWNLOAD_URL
+
 # Multilingual localization dictionaries
 LOCALES = {
+    'uk': {
+        'app_title': 'Xiaomi Unlock Tool - Автооновлення',
+        'checking': 'Перевірка наявності оновлень...',
+        'up_to_date_title': 'Оновлень немає',
+        'up_to_date_msg': 'У вас уже встановлена остання версія ({version}).',
+        'update_found_title': 'Доступне оновлення',
+        'update_found_msg': 'Доступна нова версія {latest}! (Поточна: {current})\n\nБажаєте завантажити та встановити оновлення зараз?',
+        'downloading': 'Завантаження оновлення... {percent:.1f}% ({dl_mb:.1f} МБ / {total_mb:.1f} МБ)',
+        'download_complete': 'Завантаження завершено. Підготовка файлів...',
+        'extracting': 'Розпакування та заміна файлів...',
+        'updating_self': 'Оновлення autoupdate.py...',
+        'launching': 'Оновлення завершено! Запуск Xiaomi Unlock Tool...',
+        'btn_update': 'Оновити зараз',
+        'btn_cancel': 'Скасувати',
+        'btn_ok': 'OK',
+        'btn_close': 'Закрити',
+        'error_title': 'Помилка оновлення',
+        'error_msg': 'Сталася помилка під час оновлення:\n{error}',
+    },
     'en': {
         'app_title': 'Xiaomi Unlock Tool - Auto Update',
         'checking': 'Checking for updates...',
@@ -228,11 +257,13 @@ def get_current_version(base_dir):
             except Exception:
                 pass
             return fname[:-3]
-    return "8.1"
+    return "8.2"
 
 
-def check_remote_version(check_url=UPDATE_CHECK_URL):
+def check_remote_version(check_url=None, lang=None):
     """Queries the remote version endpoint."""
+    if not check_url:
+        check_url = get_update_urls(lang)[0]
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) XiaomiUnlockTool-Updater'}
     req = urllib.request.Request(check_url, headers=headers)
     with urllib.request.urlopen(req, timeout=8) as resp:
@@ -438,7 +469,7 @@ def launch_tool(base_dir):
         return target_script
     
     # 2. Look for standard fallback files
-    for fname in ('8.1.py', '8.0.py', 'main.py'):
+    for fname in ('8.2.py', '8.1.py', '8.0.py', 'main.py'):
         fpath = os.path.join(base_dir, fname)
         if os.path.exists(fpath):
             subprocess.Popen([sys.executable, fpath], cwd=base_dir)
@@ -462,6 +493,10 @@ class AutoUpdateApp:
         self.force = force
         self.custom_url = custom_url
         self.lang = lang or get_user_language()
+        check_url, primary_url, fallback_url = get_update_urls(self.lang)
+        self.check_url = check_url
+        self.primary_download_url = primary_url
+        self.fallback_download_url = fallback_url
         self.current_autoupdate_path = os.path.abspath(__file__)
         self.cancel_event = threading.Event()
         self.worker_thread = None
@@ -673,7 +708,7 @@ class AutoUpdateApp:
             return
 
         try:
-            remote_ver_str = check_remote_version()
+            remote_ver_str = check_remote_version(self.check_url)
             latest_num = extract_version_number(remote_ver_str)
             current_num = extract_version_number(current_ver)
             
@@ -723,7 +758,7 @@ class AutoUpdateApp:
 
     def _download_and_extract_worker(self):
         temp_zip = os.path.join(tempfile.gettempdir(), f"XiaomiUnlockTool_Update_{int(time.time())}.zip")
-        urls = [self.custom_url] if self.custom_url else [PRIMARY_DOWNLOAD_URL, FALLBACK_DOWNLOAD_URL]
+        urls = [self.custom_url] if self.custom_url else [self.primary_download_url, self.fallback_download_url]
         
         success, info = download_file(
             urls,
@@ -775,14 +810,16 @@ class AutoUpdateApp:
         self.root.mainloop()
 
 
-def run_cli(base_dir, force=False, custom_url=None, check_only=False):
+def run_cli(base_dir, force=False, custom_url=None, check_only=False, lang=None):
     """Command-line updater execution."""
+    lang = lang or get_user_language()
+    check_url, primary_url, fallback_url = get_update_urls(lang)
     current_ver = get_current_version(base_dir)
     print(f"Current version: {current_ver}")
     print("Checking for updates...")
     
     try:
-        remote_str = check_remote_version()
+        remote_str = check_remote_version(check_url=check_url)
         latest_num = extract_version_number(remote_str)
         current_num = extract_version_number(current_ver)
         
@@ -811,7 +848,7 @@ def run_cli(base_dir, force=False, custom_url=None, check_only=False):
 
     print("Downloading update...")
     temp_zip = os.path.join(tempfile.gettempdir(), f"XiaomiUnlockTool_Update_{int(time.time())}.zip")
-    urls = [custom_url] if custom_url else [PRIMARY_DOWNLOAD_URL, FALLBACK_DOWNLOAD_URL]
+    urls = [custom_url] if custom_url else [primary_url, fallback_url]
     
     def cli_progress(dl, total):
         if total > 0:
@@ -839,15 +876,16 @@ def main():
     parser.add_argument("--cli", action="store_true", help="Run in command line mode without GUI")
     parser.add_argument("--target-dir", help="Base directory of the application")
     parser.add_argument("--url", help="Override update download URL")
+    parser.add_argument("--lang", help="Preferred language (e.g. ru, en, uk)")
     
     args = parser.parse_args()
     base_dir = os.path.abspath(args.target_dir) if args.target_dir else detect_base_dir()
     
     if args.cli or args.check:
-        code = run_cli(base_dir, force=args.force, custom_url=args.url, check_only=args.check)
+        code = run_cli(base_dir, force=args.force, custom_url=args.url, check_only=args.check, lang=args.lang)
         sys.exit(code)
     else:
-        app = AutoUpdateApp(base_dir, force=args.force, custom_url=args.url)
+        app = AutoUpdateApp(base_dir, force=args.force, custom_url=args.url, lang=args.lang)
         app.run()
 
 

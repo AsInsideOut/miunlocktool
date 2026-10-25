@@ -1,4 +1,4 @@
-﻿package com.asinsideout.miunlocktool
+package com.asinsideout.miunlocktool
 
 import android.app.Application
 import androidx.appcompat.app.AppCompatDelegate
@@ -10,6 +10,9 @@ class HyperApplyApp : Application() {
     override fun onCreate() {
         super.onCreate()
         val prefs = PreferencesManager(this)
+
+        // Initialize TranslationManager with saved language
+        com.asinsideout.miunlocktool.data.TranslationManager.init(this, prefs.language)
 
         // Apply saved theme mode
         AppCompatDelegate.setDefaultNightMode(prefs.themeMode)

@@ -1,4 +1,4 @@
-﻿package com.asinsideout.miunlocktool.data
+package com.asinsideout.miunlocktool.data
 
 enum class AccountStatus {
     NOT_CHECKED,
@@ -23,7 +23,10 @@ data class ApplyResult(
     val applyResult: Int?,
     val message: String,
     val isSuccess: Boolean,
-    val deadline: String? = null
+    val deadline: String? = null,
+    val isSent: Boolean = false,
+    val isStatusUnavailable: Boolean = false,
+    val rawResponse: String? = null
 )
 
 data class LogEntry(

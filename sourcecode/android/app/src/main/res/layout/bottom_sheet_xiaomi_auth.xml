@@ -23,6 +23,7 @@
         android:paddingBottom="12dp">
 
         <ImageView
+            android:id="@+id/iv_auth_shield"
             android:layout_width="36dp"
             android:layout_height="36dp"
             android:contentDescription="@null"
@@ -37,6 +38,7 @@
             android:orientation="vertical">
 
             <TextView
+                android:id="@+id/tv_auth_title"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/login_title"
@@ -44,6 +46,7 @@
                 android:textColor="?attr/colorOnSurface" />
 
             <TextView
+                android:id="@+id/tv_auth_subtitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/login_subtitle"
@@ -70,6 +73,7 @@
             android:padding="16dp">
 
             <TextView
+                android:id="@+id/tv_auth_scan_tip"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="12dp"

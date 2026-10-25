@@ -41,4 +41,9 @@
         <item name="android:navigationBarColor">@color/md_theme_light_surfaceContainer</item>
         <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">true</item>
     </style>
+
+    <style name="TextAppearance.HyperApply.BottomNav" parent="TextAppearance.Material3.LabelMedium">
+        <item name="android:textSize">11sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
 </resources>

@@ -1,6 +1,6 @@
 <resources>
     <string name="app_name">Xiaomi Unlock Tool</string>
-    <string name="app_subtitle">v8.0</string>
+    <string name="app_subtitle">v8.2</string>
 
     <!-- Navigation -->
     <string name="nav_apply">Apply</string>
@@ -34,7 +34,7 @@
     <string name="ping_unmeasured">Not measured</string>
     <string name="ping_measuring">Measuring ping...</string>
     <string name="btn_measure_ping">Measure Ping</string>
-    <string name="send_offset_calc">Target trigger: %s</string>
+    <string name="send_offset_calc">Calculated time: %s</string>
 
     <!-- Execution Modes -->
     <string name="modes_title">Execution Mode</string>
@@ -56,12 +56,33 @@
     <string name="log_empty">Logs will appear here...</string>
 
     <!-- Results & Dialogs -->
-    <string name="dialog_success_title">Application Approved!</string>
+    <string name="dialog_success_title">Success!</string>
     <string name="dialog_success_msg">Congratulations! Authorization granted. You can now bind your device in Settings > Developer Options > Mi Unlock Status.</string>
-    <string name="dialog_quota_title">Quota Exceeded</string>
-    <string name="dialog_quota_msg">Daily quota limit (1500 devices) has been reached. Please try again tomorrow at 00:00:00 Beijing time.\nDeadline: %s</string>
+    <string name="dialog_quota_title">Success!</string>
+    <string name="dialog_quota_msg">All requests received code 0 (Success). Try binding your account in developer options.</string>
+    <string name="dialog_status_unavailable_title">Application Sent</string>
+    <string name="dialog_status_unavailable_msg">Application was sent successfully, but status is temporarily unavailable.\n\nPlease check your status in a few moments using the «Check Status» button.</string>
     <string name="dialog_error_title">Notice</string>
     <string name="dialog_ok">OK</string>
+    <string name="status_unavailable_desc">Status temporarily unavailable</string>
+    <string name="log_apply_sending">Submitting application...</string>
+    <string name="log_apply_sent_success">Application sent successfully</string>
+    <string name="log_getting_status">Retrieving status...</string>
+    <string name="log_status_unavailable">Failed to get status: invalid response format</string>
+    <string name="log_status_unavailable_summary">Application sent, but status is temporarily unavailable. Check later using \'Check Status\'.</string>
+    <string name="log_apply_send_failed">Failed to send application: %s</string>
+    <string name="log_status_account_approved">Status confirmed: Account authorized until %s</string>
+    <string name="log_apply_sending_seq">[#%d] Submitting application...</string>
+    <string name="log_apply_sent_success_seq">[#%d] Application sent successfully</string>
+    <string name="log_getting_status_seq">[#%d] Retrieving status...</string>
+    <string name="log_apply_send_failed_seq">[#%1$d] Failed to send application: %2$s</string>
+
+    <!-- Live Notification -->
+    <string name="notif_channel_name">Application Status</string>
+    <string name="notif_channel_desc">Live countdown and status of unlock application</string>
+    <string name="notif_countdown">Time to submit: %s</string>
+    <string name="notif_sending">Sending</string>
+    <string name="notif_success">Success!</string>
 
     <!-- Guide Screen -->
     <string name="guide_title">HyperOS Unlock Guide</string>
@@ -89,6 +110,14 @@
     <string name="settings_section_language">Language</string>
     <string name="settings_lang_en">English</string>
     <string name="settings_lang_ru">Русский</string>
+    <string name="settings_lang_uk">Українська</string>
+    <string name="settings_lang_es">Español</string>
+    <string name="settings_lang_pt">Português</string>
+    <string name="settings_lang_id">Bahasa Indonesia</string>
+    <string name="settings_lang_zh">简体中文</string>
+    <string name="downloading_language_pack">Downloading language pack: %s...</string>
+    <string name="language_pack_downloaded">Language pack applied successfully!</string>
+    <string name="language_pack_error">Failed to download language pack. Check connection.</string>
 
     <string name="settings_section_network">Network &amp; NTP Synchronization</string>
     <string name="settings_ntp_server">NTP Server</string>
@@ -96,23 +125,48 @@
     <string name="settings_ntp_android">Android (time.android.com)</string>
     <string name="settings_ntp_cloudflare">Cloudflare (time.cloudflare.com)</string>
 
+    <!-- Timing Profiles -->
+    <string name="settings_section_timing_profile">Regional Timing Profiles</string>
+    <string name="settings_profile_europe">Europe (58.700, 58.800, 59.100, 59.300, 59.500, 59.800)</string>
+    <string name="settings_profile_asia">Asia (58.800, 59.100, 59.300, 59.500, 59.700)</string>
+    <string name="settings_profile_usa_africa">USA / Africa (58.500, 58.800, 59.100, 59.300, 59.500, 59.700)</string>
+    <string name="settings_profile_custom">Custom Timings</string>
+    <string name="settings_custom_timings_hint">Enter comma-separated timings (e.g. 58.700, 58.800)</string>
+
     <string name="settings_section_timing">Burst &amp; Timing Parameters</string>
     <string name="settings_burst_count">Burst Request Count</string>
     <string name="settings_burst_count_summary">%d requests</string>
     <string name="settings_burst_interval">Burst Interval</string>
     <string name="settings_burst_interval_summary">%d ms</string>
 
-    <string name="settings_section_about">About</string>
-    <string name="settings_about_text">Xiaomi Unlock Tool v8.0</string>
+    <string name="settings_section_about">About &amp; Authors</string>
+    <string name="settings_about_text">Tool for automatic request submission for bootloader unlocking on Xiaomi devices running HyperOS.\n\nVersion: 8.2</string>
+    <string name="authors_title">Authors &amp; Credits</string>
+    <string name="authors_devs_title">Script Developers</string>
+    <string name="authors_devs_body">• pktloss, New G3n\n• PC &amp; CLI: New G3n\n• Web &amp; Android: pktloss\n• Based on script by: Vierta</string>
+    <string name="authors_social_title">Community &amp; Links</string>
+    <string name="authors_link_tg">Telegram: @miunlocktoolrevamp</string>
+    <string name="authors_link_4pda">4PDA Forum</string>
+    <string name="authors_link_github">GitHub: AsInsideOut/miunlocktool</string>
+    <string name="authors_link_web">Website: miunlock.su</string>
+    <string name="authors_donate_title">Donate to Development</string>
+    <string name="authors_donate_da">DonationAlerts: dalink.to/asinsideout</string>
+    <string name="authors_donate_crypto">USDT (TON network):</string>
+    <string name="authors_wallet_address">UQBCkvXTF-NiT7P8g0G-4oiAdsU81rMWJNYBTxDrbl76FabG</string>
+    <string name="authors_wallet_copied">TON USDT address copied to clipboard!</string>
+    <string name="copy_address_btn">Copy Address</string>
 
     <!-- Updates -->
     <string name="settings_section_updates">Updates</string>
     <string name="btn_check_update">Check for Updates</string>
     <string name="update_checking">Checking for updates...</string>
     <string name="update_available_title">Update Available</string>
-    <string name="update_available_msg">A new version (%1$s) is available!\nCurrent version is %2$s.\n\nDo you want to visit miunlock.su to download it?</string>
-    <string name="update_download_btn">Download</string>
+    <string name="update_available_msg">A new version (%1$s) is available!\nCurrent version is %2$s.\n\nDownload and install update?</string>
+    <string name="update_download_btn">Download &amp; Install</string>
     <string name="update_cancel_btn">Cancel</string>
+    <string name="update_downloading">Downloading update (%d%%)...</string>
+    <string name="update_installing">Opening APK installer...</string>
+    <string name="update_download_error">Failed to download update: %s</string>
     <string name="update_latest_title">Latest Version</string>
     <string name="update_latest_msg">You are using the latest version (%s).</string>
     <string name="update_error_title">Update Check Failed</string>
@@ -145,4 +199,35 @@
     <string name="login_error">Authorization error: %s</string>
     <string name="login_token_extract_error">Failed to extract token from server response.</string>
     <string name="close_btn">Close</string>
+
+    <!-- Accent Color Styling -->
+    <string name="settings_section_styling">Appearance &amp; Styling</string>
+    <string name="settings_accent_color">Accent Color</string>
+    <string name="settings_color_purple">Purple</string>
+    <string name="settings_color_blue">Blue</string>
+    <string name="settings_color_orange">Orange</string>
+    <string name="settings_color_green">Green</string>
+    <string name="settings_color_red">Red</string>
+    <string name="settings_color_cyan">Cyan</string>
+    <string name="settings_color_custom">Custom</string>
+    <string name="settings_color_hex_hint">HEX: #2196F3 or #09F</string>
+    <string name="settings_apply_color">Apply</string>
+    <string name="settings_invalid_hex">Invalid HEX format (e.g. #2196F3 or #09F)</string>
+    <string name="settings_color_applied">Accent color updated!</string>
+
+    <!-- Fastboot USB OTG -->
+    <string name="fastboot_title">Fastboot (USB OTG)</string>
+    <string name="fastboot_status_no_device">No USB device detected</string>
+    <string name="fastboot_status_attached">Device attached: %s</string>
+    <string name="fastboot_status_permission_required">Permission required</string>
+    <string name="fastboot_status_permission_denied">USB permission denied</string>
+    <string name="fastboot_status_connected">Connected: %s</string>
+    <string name="fastboot_status_disconnected">Disconnected</string>
+    <string name="fastboot_btn_connect">Connect</string>
+    <string name="fastboot_btn_disconnect">Disconnect</string>
+    <string name="fastboot_btn_get_product">Get Product</string>
+    <string name="fastboot_btn_get_token">Get Token</string>
+    <string name="fastboot_product_label">Product: %s</string>
+    <string name="fastboot_token_label">Token: %s</string>
+    <string name="fastboot_info_hint">Connect a target Xiaomi phone in Fastboot mode via USB OTG cable</string>
 </resources>
