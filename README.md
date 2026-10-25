@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0--only-blue.svg?style=for-the-badge" alt="License: GPL-3.0-only"></a>
-  <a href="https://github.com/AsInsideOut/miunlocktool/releases/latest"><img src="https://img.shields.io/badge/Release-v8.1%20Stable-success.svg?style=for-the-badge" alt="Latest Release"></a>
+  <a href="https://github.com/AsInsideOut/miunlocktool/releases/latest"><img src="https://img.shields.io/badge/Release-v8.2%20Stable-success.svg?style=for-the-badge" alt="Latest Release"></a>
   <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB.svg?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.10+">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS%20%7C%20Android-informational.svg?style=for-the-badge" alt="Platforms">
   <a href="https://miunlock.su"><img src="https://img.shields.io/badge/Website-miunlock.su-orange.svg?style=for-the-badge" alt="Official Website"></a>
